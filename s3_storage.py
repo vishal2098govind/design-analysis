@@ -74,14 +74,32 @@ class S3Storage:
     def _init_s3_client(self):
         """Initialize S3 client with proper configuration"""
         try:
-            # Try to get credentials from environment or IAM role
-            self.s3_client = boto3.client(
-                's3',
-                region_name=self.region,
-                aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-                aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-                aws_session_token=os.getenv("AWS_SESSION_TOKEN")
-            )
+            # Check if explicit credentials are provided
+            aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+            aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+            aws_session_token = os.getenv("AWS_SESSION_TOKEN")
+
+            # Build client configuration
+            client_kwargs = {
+                'region_name': self.region
+            }
+
+            # Only add explicit credentials if they are provided
+            if aws_access_key_id and aws_secret_access_key:
+                logger.info(
+                    "Using explicit AWS credentials from environment variables")
+                client_kwargs.update({
+                    'aws_access_key_id': aws_access_key_id,
+                    'aws_secret_access_key': aws_secret_access_key
+                })
+                if aws_session_token:
+                    client_kwargs['aws_session_token'] = aws_session_token
+            else:
+                logger.info(
+                    "No explicit credentials provided - using IAM role or AWS CLI configuration")
+
+            # Initialize S3 client
+            self.s3_client = boto3.client('s3', **client_kwargs)
 
             # Test connection
             self.s3_client.list_buckets()
@@ -90,8 +108,10 @@ class S3Storage:
 
         except NoCredentialsError:
             raise Exception(
-                "AWS credentials not found. Please set AWS_ACCESS_KEY_ID and "
-                "AWS_SECRET_ACCESS_KEY environment variables, or configure AWS CLI."
+                "AWS credentials not found. Please either:\n"
+                "1. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables, or\n"
+                "2. Configure AWS CLI with 'aws configure', or\n"
+                "3. Attach an IAM role to your EC2 instance with S3 permissions"
             )
         except Exception as e:
             raise Exception(f"Failed to initialize S3 client: {e}")
