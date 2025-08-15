@@ -18,7 +18,14 @@ import logging
 load_dotenv()
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('s3_storage.log'),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
 
@@ -564,31 +571,70 @@ class S3Storage:
         Returns:
             str: File content or None if not found
         """
+        logger.info(f"☁️ S3: Starting to load research file: {s3_path}")
+        logger.info(f"📦 S3: Target bucket: {self.bucket_name}")
+
         try:
+            logger.info(f"🔍 S3: Attempting to get object from S3...")
             response = self.s3_client.get_object(
                 Bucket=self.bucket_name,
                 Key=s3_path
             )
+            logger.info(f"✅ S3: Successfully retrieved object from S3")
 
             # Read and decode content
+            logger.info(f"📖 S3: Reading object content...")
             content = response['Body'].read()
+            logger.info(f"📊 S3: Raw content size: {len(content)} bytes")
 
             # Try to decode as UTF-8, fallback to other encodings if needed
             try:
-                return content.decode('utf-8')
-            except UnicodeDecodeError:
+                logger.info(f"🔤 S3: Attempting UTF-8 decoding...")
+                decoded_content = content.decode('utf-8')
+                logger.info(
+                    f"✅ S3: Successfully decoded with UTF-8. Content length: {len(decoded_content)} characters")
+                logger.info(
+                    f"📄 S3: Content preview (first 200 chars): {decoded_content[:200]}...")
+                return decoded_content
+            except UnicodeDecodeError as e:
+                logger.warning(
+                    f"⚠️ S3: UTF-8 decode failed: {e}. Trying alternative encodings...")
                 # Try other common encodings
                 for encoding in ['latin-1', 'cp1252', 'iso-8859-1']:
                     try:
-                        return content.decode(encoding)
+                        logger.info(f"🔤 S3: Trying {encoding} encoding...")
+                        decoded_content = content.decode(encoding)
+                        logger.info(
+                            f"✅ S3: Successfully decoded with {encoding}. Content length: {len(decoded_content)} characters")
+                        logger.info(
+                            f"📄 S3: Content preview (first 200 chars): {decoded_content[:200]}...")
+                        return decoded_content
                     except UnicodeDecodeError:
+                        logger.warning(
+                            f"⚠️ S3: {encoding} decode failed, trying next...")
                         continue
 
                 # If all else fails, return as bytes string
-                return str(content)
+                logger.warning(
+                    f"⚠️ S3: All encodings failed, returning as bytes string")
+                fallback_content = str(content)
+                logger.info(
+                    f"📄 S3: Fallback content preview (first 200 chars): {fallback_content[:200]}...")
+                return fallback_content
 
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'NoSuchKey':
+                logger.error(f"❌ S3: File not found in S3: {s3_path}")
+            elif error_code == 'NoSuchBucket':
+                logger.error(f"❌ S3: Bucket not found: {self.bucket_name}")
+            else:
+                logger.error(
+                    f"❌ S3: AWS ClientError loading file {s3_path}: {e}")
+            return None
         except Exception as e:
-            logger.error(f"Failed to load research file {s3_path}: {e}")
+            logger.error(
+                f"❌ S3: Unexpected error loading research file {s3_path}: {e}")
             return None
 
     def list_research_files(self, limit: int = 100) -> List[Dict[str, Any]]:

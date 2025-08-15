@@ -1,0 +1,31 @@
+User Interview - Multiple Speakers(Design Team)
+
+Interviewer: "Let's talk about your design workflow. How do you currently collaborate on projects?"
+
+Alex(Senior Designer): "We use Figma for design, but the collaboration part is really fragmented. I'll create a design, share it via Slack, get feedback in comments, then have to manually update the design. It's like playing telephone - information gets lost or misinterpreted."
+
+Maria(UX Designer): "Exactly! And the feedback loop is so slow. I'll send a design for review, wait for responses, then spend time implementing changes, only to find out the stakeholder had a completely different idea in mind. It's frustrating."
+
+Interviewer: "What specific pain points do you experience?"
+
+Alex: "The biggest issue is that feedback comes from everywhere - Slack, email, Figma comments, meetings. I have to constantly switch between tools to gather all the input. Sometimes I miss important feedback because it's buried in a Slack thread from last week."
+
+Maria: "And there's no single source of truth. I might update a design based on feedback from one person, but then someone else says they never agreed to that change. It's hard to track who said what and when."
+
+Interviewer: "How do you handle design reviews?"
+
+Alex: "We try to have structured review sessions, but they often turn into free-for-alls. Everyone has an opinion, and they're not always aligned. I end up making changes to please everyone, which usually results in a design that pleases no one."
+
+Maria: "The review process is too subjective. There's no clear criteria for what makes a good design, so feedback is all over the place. One person wants it more minimal, another wants more features, and I'm stuck in the middle trying to make everyone happy."
+
+Interviewer: "What would improve your workflow?"
+
+Alex: "I need a way to consolidate all feedback in one place, with clear ownership and decision-making. Right now, it feels like I'm herding cats - everyone has input, but no one wants to make the final decision."
+
+Maria: "And I need better tools for tracking design decisions. Why did we choose this approach? What alternatives did we consider? Right now, that information gets lost, so we end up revisiting the same discussions over and over."
+
+Interviewer: "How do you handle design handoffs to developers?"
+
+Alex: "That's another pain point. I create detailed specs, but developers often have questions that I can't answer because I don't have the technical context. The handoff process is like throwing designs over a wall and hoping they land correctly."
+
+Maria: "And there's no good way to track what's been implemented versus what's still in design. I'll see something in production that doesn't match my design, but I don't know if it's because the developer misunderstood or if requirements changed."

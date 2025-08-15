@@ -4,9 +4,14 @@ Design Analysis API with S3 Storage Support
 FastAPI application with configurable storage (local or S3)
 """
 
+from s3_storage import create_s3_storage, S3Storage
+from agentic_analysis import run_agentic_analysis
+from hybrid_agentic_analysis import run_hybrid_agentic_analysis
+from openai_agentic_analysis import run_openai_agentic_analysis
 import os
 import json
 import argparse
+import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 from pathlib import Path
@@ -16,13 +21,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator, model_validator
 import uuid
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('api_s3.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 # Import the analysis implementations
-from openai_agentic_analysis import run_openai_agentic_analysis
-from hybrid_agentic_analysis import run_hybrid_agentic_analysis
-from agentic_analysis import run_agentic_analysis
 
 # Import storage implementations
-from s3_storage import create_s3_storage, S3Storage
 
 # Load environment variables
 load_dotenv()
@@ -162,18 +174,40 @@ class LocalAnalysisStorage:
 
     def load_research_file(self, s3_path: str) -> Optional[str]:
         """Load a research file from local storage"""
+        logger.info(f"📂 Local: Starting to load research file: {s3_path}")
         try:
             # Extract file ID and extension from s3_path
             file_id = s3_path.split("/")[-1].split(".")[0]
             file_extension = Path(s3_path).suffix
             local_path = self.storage_dir / \
                 "research_data" / f"{file_id}{file_extension}"
+
+            logger.info(f"📁 Local: Resolved local path: {local_path}")
+
             if local_path.exists():
+                logger.info(f"✅ Local: File exists, reading content...")
+                file_size = local_path.stat().st_size
+                logger.info(f"📏 Local: File size: {file_size} bytes")
+
                 with open(local_path, "r", encoding="utf-8") as f:
-                    return f.read()
+                    content = f.read()
+
+                logger.info(
+                    f"✅ Local: Successfully read file. Content length: {len(content)} characters")
+                logger.info(
+                    f"📄 Local: Content preview (first 200 chars): {content[:200]}...")
+                return content
+            else:
+                logger.warning(
+                    f"⚠️ Local: File not found at path: {local_path}")
+                return None
+        except UnicodeDecodeError as e:
+            logger.error(
+                f"❌ Local: Unicode decode error loading file {s3_path}: {e}")
             return None
         except Exception as e:
-            print(f"Error loading research file {s3_path}: {e}")
+            logger.error(
+                f"❌ Local: Error loading research file {s3_path}: {e}")
             return None
 
     def list_research_files(self) -> List[Dict[str, Any]]:
@@ -425,8 +459,22 @@ async def upload_research_file(file: UploadFile = File(...)):
 async def analyze_research_data(request: AnalysisRequest):
     """Analyze research data using the specified implementation"""
 
+    # Generate request ID
+    request_id = str(uuid.uuid4())
+    logger.info(f"🚀 New analysis request received: {request_id}")
+    logger.info(
+        f"📋 Request details - Implementation: {request.implementation}, Include metadata: {request.include_metadata}")
+
+    if request.s3_file_path:
+        logger.info(f"📁 S3 file path provided: {request.s3_file_path}")
+    elif request.research_data:
+        logger.info(
+            f"📝 Direct research data provided (length: {len(request.research_data)} chars)")
+
     # Validate OpenAI API key
     if not os.getenv("OPENAI_API_KEY"):
+        logger.error(
+            f"❌ OpenAI API key not configured for request {request_id}")
         raise HTTPException(
             status_code=500,
             detail="OpenAI API key not configured"
@@ -435,13 +483,12 @@ async def analyze_research_data(request: AnalysisRequest):
     # Validate implementation choice
     valid_implementations = ["openai", "hybrid", "langchain"]
     if request.implementation not in valid_implementations:
+        logger.error(
+            f"❌ Invalid implementation '{request.implementation}' for request {request_id}")
         raise HTTPException(
             status_code=400,
             detail=f"Invalid implementation. Must be one of: {valid_implementations}"
         )
-
-    # Generate request ID
-    request_id = str(uuid.uuid4())
 
     try:
         import time
@@ -450,37 +497,100 @@ async def analyze_research_data(request: AnalysisRequest):
         # Get research data from appropriate source
         research_data = None
         if request.research_data:
+            logger.info(
+                f"📝 Using direct research data for request {request_id}")
             research_data = request.research_data
+            logger.info(
+                f"📊 Research data length: {len(research_data)} characters")
         elif request.s3_file_path:
+            logger.info(
+                f"📁 Loading file from path: {request.s3_file_path} for request {request_id}")
+
             # Load data from S3 or local file
             if STORAGE_TYPE == "s3":
-                research_data = storage.load_research_file(
-                    request.s3_file_path)
+                logger.info(
+                    f"☁️ Loading from S3 storage: {request.s3_file_path}")
+                try:
+                    research_data = storage.load_research_file(
+                        request.s3_file_path)
+                    if research_data:
+                        logger.info(
+                            f"✅ Successfully loaded S3 file. Content length: {len(research_data)} characters")
+                        logger.info(
+                            f"📄 File content preview (first 200 chars): {research_data[:200]}...")
+                    else:
+                        logger.warning(
+                            f"⚠️ S3 file load returned None for path: {request.s3_file_path}")
+                except Exception as e:
+                    logger.error(
+                        f"❌ Failed to load S3 file {request.s3_file_path}: {str(e)}")
+                    raise HTTPException(
+                        status_code=500, detail=f"Failed to load S3 file: {str(e)}")
             else:
                 # Load from local file
+                logger.info(
+                    f"📂 Loading from local file: {request.s3_file_path}")
                 file_path = Path(request.s3_file_path)
                 if file_path.exists():
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        research_data = f.read()
+                    try:
+                        logger.info(f"📖 Reading local file: {file_path}")
+                        file_size = file_path.stat().st_size
+                        logger.info(f"📏 File size: {file_size} bytes")
+
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            research_data = f.read()
+
+                        logger.info(
+                            f"✅ Successfully read local file. Content length: {len(research_data)} characters")
+                        logger.info(
+                            f"📄 File content preview (first 200 chars): {research_data[:200]}...")
+
+                    except UnicodeDecodeError as e:
+                        logger.error(
+                            f"❌ Unicode decode error reading file {file_path}: {str(e)}")
+                        raise HTTPException(
+                            status_code=500, detail=f"File encoding error: {str(e)}")
+                    except Exception as e:
+                        logger.error(
+                            f"❌ Error reading local file {file_path}: {str(e)}")
+                        raise HTTPException(
+                            status_code=500, detail=f"File read error: {str(e)}")
                 else:
+                    logger.error(f"❌ Local file not found: {file_path}")
                     raise HTTPException(
                         status_code=404, detail=f"File not found: {request.s3_file_path}")
 
         if not research_data:
+            logger.error(
+                f"❌ No research data available for request {request_id}")
             raise HTTPException(
                 status_code=400, detail="No research data available")
 
+        logger.info(
+            f"📊 Final research data length for analysis: {len(research_data)} characters")
+
         # Run analysis based on implementation choice
+        logger.info(
+            f"🔍 Starting analysis with implementation: {request.implementation}")
         if request.implementation == "openai":
+            logger.info(
+                f"🤖 Running OpenAI agentic analysis for request {request_id}")
             result = run_openai_agentic_analysis(research_data)
         elif request.implementation == "hybrid":
+            logger.info(
+                f"🔄 Running hybrid agentic analysis for request {request_id}")
             result = run_hybrid_agentic_analysis(research_data)
         else:  # langchain
+            logger.info(
+                f"🔗 Running LangChain agentic analysis for request {request_id}")
             result = run_agentic_analysis(research_data)
 
         execution_time = time.time() - start_time
+        logger.info(
+            f"⏱️ Analysis completed in {execution_time:.2f} seconds for request {request_id}")
 
         # Prepare response
+        logger.info(f"📋 Preparing response for request {request_id}")
         response = AnalysisResponse(
             request_id=request_id,
             status="completed",
@@ -497,11 +607,20 @@ async def analyze_research_data(request: AnalysisRequest):
         )
 
         # Store result
-        storage.save_analysis(request_id, response.dict())
+        logger.info(f"💾 Storing analysis result for request {request_id}")
+        storage_success = storage.save_analysis(request_id, response.dict())
+        if storage_success:
+            logger.info(
+                f"✅ Analysis result stored successfully for request {request_id}")
+        else:
+            logger.warning(
+                f"⚠️ Failed to store analysis result for request {request_id}")
 
+        logger.info(f"🎉 Analysis request {request_id} completed successfully")
         return response
 
     except Exception as e:
+        logger.error(f"❌ Analysis failed for request {request_id}: {str(e)}")
         # Store error result
         error_response = AnalysisResponse(
             request_id=request_id,
@@ -516,6 +635,8 @@ async def analyze_research_data(request: AnalysisRequest):
             metadata={"error": str(e)},
             execution_time=0.0
         )
+
+        logger.info(f"💾 Storing error result for request {request_id}")
         storage.save_analysis(request_id, error_response.dict())
 
         raise HTTPException(
