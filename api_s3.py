@@ -6,13 +6,14 @@ FastAPI application with configurable storage (local or S3)
 
 import os
 import json
+import argparse
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 import uuid
 
 # Import the analysis implementations
@@ -49,6 +50,10 @@ STORAGE_TYPE = os.getenv("STORAGE_TYPE", "local").lower()  # "local" or "s3"
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
 S3_REGION = os.getenv("S3_REGION", "us-east-1")
 S3_PREFIX = os.getenv("S3_PREFIX", "design-analysis")
+
+# Server configuration
+DEFAULT_PORT = int(os.getenv("API_PORT", "8000"))
+DEFAULT_HOST = os.getenv("API_HOST", "0.0.0.0")
 
 # Local file storage configuration
 RESULTS_DIR = Path("analysis_results")
@@ -250,21 +255,22 @@ class AnalysisRequest(BaseModel):
     include_metadata: bool = Field(
         default=True, description="Include analysis metadata in response")
 
-    @validator('research_data', 's3_file_path')
-    def validate_input(cls, v, values):
+    @field_validator('research_data', 's3_file_path')
+    @classmethod
+    def validate_input(cls, v, info):
         """Ensure either research_data or s3_file_path is provided, but not both"""
-        if 'research_data' in values and values['research_data'] and v:
+        if info.field_name == 's3_file_path' and v and info.data.get('research_data'):
             raise ValueError(
                 "Provide either research_data or s3_file_path, not both")
         return v
 
-    @root_validator
-    def validate_required_fields(cls, values):
+    @model_validator(mode='after')
+    def validate_required_fields(self):
         """Ensure at least one input method is provided"""
-        if not values.get('research_data') and not values.get('s3_file_path'):
+        if not self.research_data and not self.s3_file_path:
             raise ValueError(
                 "Either research_data or s3_file_path must be provided")
-        return values
+        return self
 
 
 class FileUploadResponse(BaseModel):
@@ -788,11 +794,35 @@ async def get_storage_info():
     }
 
 
+def parse_arguments():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(
+        description="Design Analysis API with S3 Storage Support")
+    parser.add_argument("--port", "-p", type=int, default=DEFAULT_PORT,
+                        help=f"Port to run the server on (default: {DEFAULT_PORT})")
+    parser.add_argument("--host", type=str, default=DEFAULT_HOST,
+                        help=f"Host to bind the server to (default: {DEFAULT_HOST})")
+    parser.add_argument("--reload", "-r", action="store_true", default=True,
+                        help="Enable auto-reload on code changes (default: True)")
+    parser.add_argument("--no-reload", action="store_true",
+                        help="Disable auto-reload on code changes")
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
     import uvicorn
 
+    # Parse command line arguments
+    args = parse_arguments()
+
+    # Determine reload setting
+    reload_enabled = args.reload and not args.no_reload
+
     print("🚀 Starting Design Analysis API with S3 Storage Support...")
     print(f"📦 Storage Type: {STORAGE_TYPE}")
+    print(f"🌐 Server: {args.host}:{args.port}")
+    print(f"🔄 Auto-reload: {'Enabled' if reload_enabled else 'Disabled'}")
+
     if STORAGE_TYPE == "s3":
         print(f"🌍 S3 Region: {S3_REGION}")
         print(f"📁 S3 Prefix: {S3_PREFIX}")
@@ -801,7 +831,7 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "api_s3:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True
+        host=args.host,
+        port=args.port,
+        reload=reload_enabled
     )
