@@ -1,0 +1,17 @@
+# /etc/systemd/system/design-analysis.service
+
+[Unit]
+Description=Design Analysis API
+After=network.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/home/ec2-user/design-analysis
+Environment=PATH=/home/ec2-user/design-analysis/venv/bin
+ExecStart=/home/ec2-user/design-analysis/venv/bin/python api_s3.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
