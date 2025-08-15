@@ -1,0 +1,42 @@
+# Example Terraform variables file for Design Analysis EC2 deployment
+# Copy this file to terraform.tfvars and update the values
+
+# AWS Configuration
+aws_region = "us-east-1"
+
+# EC2 Configuration
+instance_type     = "t3.medium"
+key_pair_name     = "your-key-pair-name"
+root_volume_size  = 20
+
+# Security Configuration
+allowed_ssh_cidr = ["YOUR_IP_ADDRESS/32"]  # Replace with your IP
+allowed_api_cidr = ["0.0.0.0/0"]
+
+# Environment
+environment = "prod"
+
+# Application Configuration
+openai_api_key = "sk-your-openai-api-key-here"
+s3_bucket_name = "design-analysis-production"
+s3_prefix      = "design-analysis"
+repo_url       = "https://github.com/yourusername/design-analysis.git"
+
+# Network Configuration
+create_eip = false
+
+# Optional Features
+enable_cloudwatch_agent = true
+enable_ssl             = false
+domain_name            = ""
+backup_enabled         = true
+backup_retention_days  = 30
+
+# Tags
+tags = {
+  Project     = "Design Analysis"
+  ManagedBy   = "Terraform"
+  Environment = "production"
+  Owner       = "your-name"
+  CostCenter  = "engineering"
+}
