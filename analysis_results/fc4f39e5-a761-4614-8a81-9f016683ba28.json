@@ -1,0 +1,15 @@
+{
+  "request_id": "fc4f39e5-a761-4614-8a81-9f016683ba28",
+  "status": "error",
+  "implementation": "langchain",
+  "timestamp": "2025-08-15T20:04:42.424353",
+  "chunks": [],
+  "inferences": [],
+  "patterns": [],
+  "insights": [],
+  "design_principles": [],
+  "metadata": {
+    "error": "Error code: 500 - {'error': {'message': 'The model produced invalid content. Consider modifying your prompt if you are seeing this error persistently.', 'type': 'model_error', 'param': None, 'code': None}}"
+  },
+  "execution_time": 0.0
+}

@@ -11,7 +11,7 @@ import json
 def analyze_interview_transcript(transcript: str, implementation: str = "hybrid"):
     """Analyze an interview transcript using the design analysis system"""
 
-    client = DesignAnalysisClient("http://localhost:8000")
+    client = DesignAnalysisClient("http://localhost:8001")
 
     print(
         f"🔍 Analyzing interview transcript using {implementation} implementation...")
@@ -141,11 +141,13 @@ def main():
 
     print("🎤 Interview Transcript Analysis Examples")
     print("=" * 60)
+    implementation = "langchain"
 
     # Example 1: Single Speaker
     print("\n📝 Example 1: Single Speaker Interview")
     print("-" * 40)
-    result1 = analyze_interview_transcript(SINGLE_SPEAKER_TRANSCRIPT, "hybrid")
+    result1 = analyze_interview_transcript(
+        SINGLE_SPEAKER_TRANSCRIPT, implementation)
 
     if result1:
         print("\n🔍 Key Insights from Single Speaker:")
@@ -156,7 +158,7 @@ def main():
     print("\n\n📝 Example 2: Multiple Speakers Interview")
     print("-" * 40)
     result2 = analyze_interview_transcript(
-        MULTIPLE_SPEAKERS_TRANSCRIPT, "hybrid")
+        MULTIPLE_SPEAKERS_TRANSCRIPT, implementation)
 
     if result2:
         print("\n🔍 Key Insights from Multiple Speakers:")
@@ -166,7 +168,8 @@ def main():
     # Example 3: Structured Interview
     print("\n\n📝 Example 3: Structured Interview")
     print("-" * 40)
-    result3 = analyze_interview_transcript(STRUCTURED_INTERVIEW, "hybrid")
+    result3 = analyze_interview_transcript(
+        STRUCTURED_INTERVIEW, implementation)
 
     if result3:
         print("\n🔍 Key Insights from Structured Interview:")
