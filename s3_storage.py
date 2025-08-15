@@ -498,6 +498,160 @@ class S3Storage:
             logger.error(f"Failed to search analyses: {e}")
             return []
 
+    def save_research_file(self, s3_path: str, content: bytes, metadata: dict) -> bool:
+        """
+        Save research file to S3
+
+        Args:
+            s3_path: S3 object key for the file
+            content: File content as bytes
+            metadata: File metadata
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Upload to S3
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=s3_path,
+                Body=content,
+                ContentType=metadata.get('content_type', 'text/plain'),
+                Metadata={
+                    'file_id': metadata.get('file_id', ''),
+                    'original_filename': metadata.get('original_filename', ''),
+                    'file_size': str(metadata.get('file_size', 0)),
+                    'upload_time': metadata.get('upload_time', ''),
+                    'file_extension': metadata.get('file_extension', ''),
+                    'file_type': 'research_data'
+                }
+            )
+
+            logger.info(f"Saved research file to S3: {s3_path}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to save research file {s3_path}: {e}")
+            return False
+
+    def load_research_file(self, s3_path: str) -> Optional[str]:
+        """
+        Load research file from S3
+
+        Args:
+            s3_path: S3 object key for the file
+
+        Returns:
+            str: File content or None if not found
+        """
+        try:
+            response = self.s3_client.get_object(
+                Bucket=self.bucket_name,
+                Key=s3_path
+            )
+
+            # Read and decode content
+            content = response['Body'].read()
+
+            # Try to decode as UTF-8, fallback to other encodings if needed
+            try:
+                return content.decode('utf-8')
+            except UnicodeDecodeError:
+                # Try other common encodings
+                for encoding in ['latin-1', 'cp1252', 'iso-8859-1']:
+                    try:
+                        return content.decode(encoding)
+                    except UnicodeDecodeError:
+                        continue
+
+                # If all else fails, return as bytes string
+                return str(content)
+
+        except Exception as e:
+            logger.error(f"Failed to load research file {s3_path}: {e}")
+            return None
+
+    def list_research_files(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        List all research files with metadata
+
+        Args:
+            limit: Maximum number of files to return
+
+        Returns:
+            List of research file metadata dictionaries
+        """
+        try:
+            files = []
+
+            # List objects in the research-data folder
+            paginator = self.s3_client.get_paginator('list_objects_v2')
+            pages = paginator.paginate(
+                Bucket=self.bucket_name,
+                Prefix=f"{self.prefix}/research-data/",
+                MaxItems=limit
+            )
+
+            for page in pages:
+                if 'Contents' in page:
+                    for obj in page['Contents']:
+                        try:
+                            # Get object metadata
+                            response = self.s3_client.head_object(
+                                Bucket=self.bucket_name,
+                                Key=obj['Key']
+                            )
+
+                            metadata = response.get('Metadata', {})
+
+                            files.append({
+                                "file_id": metadata.get('file_id', ''),
+                                "original_filename": metadata.get('original_filename', ''),
+                                "s3_path": obj['Key'],
+                                "file_size": obj['Size'],
+                                "upload_time": metadata.get('upload_time', ''),
+                                "file_extension": metadata.get('file_extension', ''),
+                                "created": obj['LastModified'].isoformat(),
+                                "storage_type": "s3"
+                            })
+
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to get metadata for {obj['Key']}: {e}")
+                            continue
+
+            # Sort by creation time (newest first)
+            files.sort(key=lambda x: x['created'], reverse=True)
+
+            logger.info(f"Listed {len(files)} research files from S3")
+            return files
+
+        except Exception as e:
+            logger.error(f"Failed to list research files: {e}")
+            return []
+
+    def delete_research_file(self, s3_path: str) -> bool:
+        """
+        Delete research file from S3
+
+        Args:
+            s3_path: S3 object key for the file
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            self.s3_client.delete_object(
+                Bucket=self.bucket_name,
+                Key=s3_path
+            )
+            logger.info(f"Deleted research file from S3: {s3_path}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to delete research file {s3_path}: {e}")
+            return False
+
     def backup_to_local(self, output_dir: str = "s3_backup") -> bool:
         """
         Backup all S3 data to local filesystem

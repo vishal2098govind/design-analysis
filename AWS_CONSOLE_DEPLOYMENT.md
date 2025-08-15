@@ -191,6 +191,7 @@ This guide shows you how to deploy the Design Analysis system using only the AWS
 
 4. **Create Environment File**
    ```bash
+   
    cat > .env << EOF
    OPENAI_API_KEY=your_openai_api_key_here
    STORAGE_TYPE=s3

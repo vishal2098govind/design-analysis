@@ -10,9 +10,9 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator, root_validator
 import uuid
 
 # Import the analysis implementations
@@ -138,6 +138,78 @@ class LocalAnalysisStorage:
             print(f"Error getting storage stats: {e}")
             return {"error": str(e)}
 
+    def save_research_file(self, s3_path: str, content: bytes, metadata: dict) -> bool:
+        """Save a research file to local storage"""
+        try:
+            # Extract file ID and extension from s3_path
+            file_id = s3_path.split("/")[-1].split(".")[0]
+            file_extension = Path(s3_path).suffix
+            local_path = self.storage_dir / \
+                "research_data" / f"{file_id}{file_extension}"
+            local_path.parent.mkdir(exist_ok=True)
+
+            with open(local_path, "wb") as f:
+                f.write(content)
+            return True
+        except Exception as e:
+            print(f"Error saving research file {s3_path}: {e}")
+            return False
+
+    def load_research_file(self, s3_path: str) -> Optional[str]:
+        """Load a research file from local storage"""
+        try:
+            # Extract file ID and extension from s3_path
+            file_id = s3_path.split("/")[-1].split(".")[0]
+            file_extension = Path(s3_path).suffix
+            local_path = self.storage_dir / \
+                "research_data" / f"{file_id}{file_extension}"
+            if local_path.exists():
+                with open(local_path, "r", encoding="utf-8") as f:
+                    return f.read()
+            return None
+        except Exception as e:
+            print(f"Error loading research file {s3_path}: {e}")
+            return None
+
+    def list_research_files(self) -> List[Dict[str, Any]]:
+        """List all uploaded research files"""
+        files = []
+        try:
+            research_dir = self.storage_dir / "research_data"
+            if research_dir.exists():
+                for file_path in research_dir.glob("*"):
+                    if file_path.is_file():
+                        files.append({
+                            "file_id": file_path.stem,
+                            "original_filename": file_path.name,
+                            "s3_path": str(file_path),
+                            "file_size": file_path.stat().st_size,
+                            "upload_time": datetime.fromtimestamp(file_path.stat().st_ctime).isoformat(),
+                            "file_extension": file_path.suffix,
+                            "created": datetime.fromtimestamp(file_path.stat().st_ctime).isoformat(),
+                            "storage_type": "local"
+                        })
+            return files
+        except Exception as e:
+            print(f"Error listing research files: {e}")
+            return []
+
+    def delete_research_file(self, s3_path: str) -> bool:
+        """Delete a research file from local storage"""
+        try:
+            # Extract file ID and extension from s3_path
+            file_id = s3_path.split("/")[-1].split(".")[0]
+            file_extension = Path(s3_path).suffix
+            local_path = self.storage_dir / \
+                "research_data" / f"{file_id}{file_extension}"
+            if local_path.exists():
+                local_path.unlink()
+                return True
+            return False
+        except Exception as e:
+            print(f"Error deleting research file {s3_path}: {e}")
+            return False
+
 
 # Initialize storage based on configuration
 def initialize_storage():
@@ -169,11 +241,38 @@ storage = initialize_storage()
 
 # Pydantic models
 class AnalysisRequest(BaseModel):
-    research_data: str = Field(..., description="Research data to analyze")
+    research_data: Optional[str] = Field(
+        None, description="Research data to analyze (for small data)")
+    s3_file_path: Optional[str] = Field(
+        None, description="S3 path to research data file (for large data)")
     implementation: str = Field(
         default="hybrid", description="Analysis implementation to use")
     include_metadata: bool = Field(
         default=True, description="Include analysis metadata in response")
+
+    @validator('research_data', 's3_file_path')
+    def validate_input(cls, v, values):
+        """Ensure either research_data or s3_file_path is provided, but not both"""
+        if 'research_data' in values and values['research_data'] and v:
+            raise ValueError(
+                "Provide either research_data or s3_file_path, not both")
+        return v
+
+    @root_validator
+    def validate_required_fields(cls, values):
+        """Ensure at least one input method is provided"""
+        if not values.get('research_data') and not values.get('s3_file_path'):
+            raise ValueError(
+                "Either research_data or s3_file_path must be provided")
+        return values
+
+
+class FileUploadResponse(BaseModel):
+    file_id: str
+    s3_path: str
+    file_size: int
+    upload_time: str
+    message: str
 
 
 class AnalysisResponse(BaseModel):
@@ -213,8 +312,20 @@ async def root():
     return {
         "name": "Design Analysis API with S3 Storage",
         "version": "2.0.0",
-        "description": "API for the Five Steps of Design Analysis using agentic AI",
+        "description": "API for the Five Steps of Design Analysis using agentic AI with configurable storage",
         "storage_type": STORAGE_TYPE,
+        "features": [
+            "Direct text analysis",
+            "File upload and S3 path analysis",
+            "Multiple analysis implementations",
+            "Configurable storage (local/S3)"
+        ],
+        "endpoints": {
+            "upload": "/upload - Upload research files",
+            "analyze": "/analyze - Analyze research data",
+            "files": "/files - List uploaded files",
+            "docs": "/docs - API documentation"
+        },
         "docs": "/docs",
         "health": "/health"
     }
@@ -233,6 +344,75 @@ async def health_check():
         storage_info=storage_info,
         openai_key_configured=bool(os.getenv("OPENAI_API_KEY"))
     )
+
+
+@app.post("/upload", response_model=FileUploadResponse)
+async def upload_research_file(file: UploadFile = File(...)):
+    """Upload research data file to S3"""
+
+    # Validate file type
+    allowed_extensions = ['.txt', '.json', '.md', '.csv']
+    file_extension = Path(file.filename).suffix.lower()
+
+    if file_extension not in allowed_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type not allowed. Allowed types: {allowed_extensions}"
+        )
+
+    # Check file size (max 50MB)
+    max_size = 50 * 1024 * 1024  # 50MB
+    if file.size and file.size > max_size:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large. Maximum size: 50MB"
+        )
+
+    try:
+        # Generate file ID
+        file_id = str(uuid.uuid4())
+
+        # Read file content
+        content = await file.read()
+
+        # Create file metadata
+        file_metadata = {
+            "file_id": file_id,
+            "original_filename": file.filename,
+            "file_size": len(content),
+            "content_type": file.content_type,
+            "upload_time": datetime.now().isoformat(),
+            "file_extension": file_extension
+        }
+
+        # Save file to storage
+        if STORAGE_TYPE == "s3":
+            # Save to S3
+            s3_path = f"{S3_PREFIX}/research-data/{file_id}{file_extension}"
+            success = storage.save_research_file(
+                s3_path, content, file_metadata)
+            if not success:
+                raise HTTPException(
+                    status_code=500, detail="Failed to upload file to S3")
+        else:
+            # Save to local storage
+            local_path = RESULTS_DIR / "research_data" / \
+                f"{file_id}{file_extension}"
+            local_path.parent.mkdir(exist_ok=True)
+            with open(local_path, "wb") as f:
+                f.write(content)
+            s3_path = str(local_path)  # Use local path for consistency
+
+        return FileUploadResponse(
+            file_id=file_id,
+            s3_path=s3_path,
+            file_size=len(content),
+            upload_time=file_metadata["upload_time"],
+            message=f"File uploaded successfully. Use s3_file_path: '{s3_path}' in analysis request"
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
 @app.post("/analyze", response_model=AnalysisResponse)
@@ -261,13 +441,36 @@ async def analyze_research_data(request: AnalysisRequest):
         import time
         start_time = time.time()
 
+        # Get research data from appropriate source
+        research_data = None
+        if request.research_data:
+            research_data = request.research_data
+        elif request.s3_file_path:
+            # Load data from S3 or local file
+            if STORAGE_TYPE == "s3":
+                research_data = storage.load_research_file(
+                    request.s3_file_path)
+            else:
+                # Load from local file
+                file_path = Path(request.s3_file_path)
+                if file_path.exists():
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        research_data = f.read()
+                else:
+                    raise HTTPException(
+                        status_code=404, detail=f"File not found: {request.s3_file_path}")
+
+        if not research_data:
+            raise HTTPException(
+                status_code=400, detail="No research data available")
+
         # Run analysis based on implementation choice
         if request.implementation == "openai":
-            result = run_openai_agentic_analysis(request.research_data)
+            result = run_openai_agentic_analysis(research_data)
         elif request.implementation == "hybrid":
-            result = run_hybrid_agentic_analysis(request.research_data)
+            result = run_hybrid_agentic_analysis(research_data)
         else:  # langchain
-            result = run_agentic_analysis(request.research_data)
+            result = run_agentic_analysis(research_data)
 
         execution_time = time.time() - start_time
 
@@ -479,6 +682,86 @@ async def analyze_batch(requests: List[AnalysisRequest]):
         "successful": len([r for r in results if r.status == "completed"]),
         "failed": len([r for r in results if r.status == "error"])
     }
+
+
+@app.get("/files")
+async def list_research_files():
+    """List all uploaded research files"""
+    try:
+        if STORAGE_TYPE == "s3":
+            files = storage.list_research_files()
+        else:
+            # For local storage, list files in research_data directory
+            research_dir = RESULTS_DIR / "research_data"
+            files = []
+            if research_dir.exists():
+                for file_path in research_dir.glob("*"):
+                    if file_path.is_file():
+                        files.append({
+                            "file_id": file_path.stem,
+                            "original_filename": file_path.name,
+                            "s3_path": str(file_path),
+                            "file_size": file_path.stat().st_size,
+                            "upload_time": datetime.fromtimestamp(file_path.stat().st_ctime).isoformat(),
+                            "file_extension": file_path.suffix,
+                            "created": datetime.fromtimestamp(file_path.stat().st_ctime).isoformat(),
+                            "storage_type": "local"
+                        })
+
+        return {
+            "files": files,
+            "total_count": len(files),
+            "storage_type": STORAGE_TYPE
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to list files: {str(e)}")
+
+
+@app.delete("/files/{file_id}")
+async def delete_research_file(file_id: str):
+    """Delete a research file"""
+    try:
+        if STORAGE_TYPE == "s3":
+            # Find the file by ID and delete it
+            files = storage.list_research_files()
+            file_to_delete = None
+            for file in files:
+                if file["file_id"] == file_id:
+                    file_to_delete = file
+                    break
+
+            if not file_to_delete:
+                raise HTTPException(
+                    status_code=404, detail=f"File with ID {file_id} not found")
+
+            success = storage.delete_research_file(file_to_delete["s3_path"])
+        else:
+            # For local storage, find and delete the file
+            research_dir = RESULTS_DIR / "research_data"
+            file_found = False
+            for file_path in research_dir.glob("*"):
+                if file_path.stem == file_id:
+                    file_path.unlink()
+                    file_found = True
+                    break
+
+            if not file_found:
+                raise HTTPException(
+                    status_code=404, detail=f"File with ID {file_id} not found")
+            success = True
+
+        if success:
+            return {"message": f"File {file_id} deleted successfully"}
+        else:
+            raise HTTPException(
+                status_code=500, detail="Failed to delete file")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete file: {str(e)}")
 
 
 @app.get("/storage/info")
