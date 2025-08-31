@@ -177,37 +177,47 @@ class DynamoDBTracker:
         try:
             logger.info(f"📝 Creating analysis request tracking: {request_id}")
 
-            # Initialize step status
+            # Initialize step status with proper DynamoDB format
             steps_status = {
                 "chunking": {
-                    "status": StepStatus.PENDING.value,
-                    "message": "Waiting to start chunking",
-                    "started_at": None,
-                    "completed_at": None
+                    "M": {
+                        "status": {"S": StepStatus.PENDING.value},
+                        "message": {"S": "Waiting to start chunking"},
+                        "started_at": {"NULL": True},
+                        "completed_at": {"NULL": True}
+                    }
                 },
                 "inferring": {
-                    "status": StepStatus.PENDING.value,
-                    "message": "Waiting for chunking to complete",
-                    "started_at": None,
-                    "completed_at": None
+                    "M": {
+                        "status": {"S": StepStatus.PENDING.value},
+                        "message": {"S": "Waiting for chunking to complete"},
+                        "started_at": {"NULL": True},
+                        "completed_at": {"NULL": True}
+                    }
                 },
                 "relating": {
-                    "status": StepStatus.PENDING.value,
-                    "message": "Waiting for inference to complete",
-                    "started_at": None,
-                    "completed_at": None
+                    "M": {
+                        "status": {"S": StepStatus.PENDING.value},
+                        "message": {"S": "Waiting for inference to complete"},
+                        "started_at": {"NULL": True},
+                        "completed_at": {"NULL": True}
+                    }
                 },
                 "explaining": {
-                    "status": StepStatus.PENDING.value,
-                    "message": "Waiting for pattern analysis to complete",
-                    "started_at": None,
-                    "completed_at": None
+                    "M": {
+                        "status": {"S": StepStatus.PENDING.value},
+                        "message": {"S": "Waiting for pattern analysis to complete"},
+                        "started_at": {"NULL": True},
+                        "completed_at": {"NULL": True}
+                    }
                 },
                 "activating": {
-                    "status": StepStatus.PENDING.value,
-                    "message": "Waiting for explanation to complete",
-                    "started_at": None,
-                    "completed_at": None
+                    "M": {
+                        "status": {"S": StepStatus.PENDING.value},
+                        "message": {"S": "Waiting for explanation to complete"},
+                        "started_at": {"NULL": True},
+                        "completed_at": {"NULL": True}
+                    }
                 }
             }
 
@@ -250,36 +260,39 @@ class DynamoDBTracker:
             expression_attribute_values = {}
             expression_attribute_names = {}
 
-            # Update step status
-            step_path = f"#analysis_result.#steps_status.#{step_name}"
-            update_expression += f"{step_path}.#status = :status, "
-            update_expression += f"{step_path}.#message = :message, "
-            update_expression += f"{step_path}.#updated_at = :timestamp, "
+            # Update step status - use proper nested path
+            step_path = f"#analysis_result.#steps_status.#{step_name}.#status"
+            message_path = f"#analysis_result.#steps_status.#{step_name}.#message"
+
+            update_expression += f"{step_path} = :status, "
+            update_expression += f"{message_path} = :message, "
 
             expression_attribute_names.update({
                 '#analysis_result': 'analysis_result',
                 '#steps_status': 'steps_status',
                 f'#{step_name}': step_name,
                 '#status': 'status',
-                '#message': 'message',
-                '#updated_at': 'updated_at'
+                '#message': 'message'
             })
 
             expression_attribute_values.update({
                 ':status': {'S': status.value},
-                ':message': {'S': message},
-                ':timestamp': {'S': timestamp}
+                ':message': {'S': message}
             })
 
             # Update started_at if processing
             if status == StepStatus.PROCESSING:
-                update_expression += f"{step_path}.#started_at = :timestamp, "
+                started_path = f"#analysis_result.#steps_status.#{step_name}.#started_at"
+                update_expression += f"{started_path} = :timestamp, "
                 expression_attribute_names['#started_at'] = 'started_at'
+                expression_attribute_values[':timestamp'] = {'S': timestamp}
 
             # Update completed_at if completed or failed
             if status in [StepStatus.COMPLETED, StepStatus.FAILED]:
-                update_expression += f"{step_path}.#completed_at = :timestamp, "
+                completed_path = f"#analysis_result.#steps_status.#{step_name}.#completed_at"
+                update_expression += f"{completed_path} = :timestamp, "
                 expression_attribute_names['#completed_at'] = 'completed_at'
+                expression_attribute_values[':timestamp'] = {'S': timestamp}
 
             # Update overall status and result data if analysis is complete
             if step_name == "activating" and status == StepStatus.COMPLETED:
@@ -289,16 +302,19 @@ class DynamoDBTracker:
 
                 expression_attribute_names.update({
                     '#overall_status': 'overall_status',
-                    '#result_data': 'result_data'
+                    '#result_data': 'result_data',
+                    '#updated_at': 'updated_at'
                 })
 
                 expression_attribute_values.update({
                     ':overall_status': {'S': StepStatus.COMPLETED.value},
-                    ':result_data': {'S': result_s3_path or ''}
+                    ':result_data': {'S': result_s3_path or ''},
+                    ':timestamp': {'S': timestamp}
                 })
             else:
                 update_expression += "#updated_at = :timestamp"
                 expression_attribute_names['#updated_at'] = 'updated_at'
+                expression_attribute_values[':timestamp'] = {'S': timestamp}
 
             # Remove trailing comma and space
             update_expression = update_expression.rstrip(', ')
