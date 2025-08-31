@@ -272,99 +272,112 @@ def monitor_analysis_progress(request_id):
     st.markdown(
         f'<h3 class="sub-header">📊 Real-Time Analysis Progress: {request_id}</h3>', unsafe_allow_html=True)
 
-    # Progress bar for overall progress
+    # Create placeholders for all dynamic content
     progress_bar = st.progress(0)
     overall_status_text = st.empty()
+
+    # Placeholders for metrics
+    status_metric = st.empty()
+    created_metric = st.empty()
+    updated_metric = st.empty()
+
+    # Placeholder for research data
+    research_data_text = st.empty()
+
+    # Placeholder for steps section
+    steps_section = st.empty()
+
+    # Placeholder for results section
+    results_section = st.empty()
+
+    # Placeholder for completion message
+    completion_message = st.empty()
 
     # Initialize session state for results
     if 'analysis_results' not in st.session_state:
         st.session_state.analysis_results = {}
 
     # Monitoring loop
-    monitoring_placeholder = st.empty()
+    while True:
+        try:
+            # Get analysis status from DynamoDB
+            analysis = get_analysis_status(request_id)
 
-    with monitoring_placeholder.container():
-        while True:
-            try:
-                # Get analysis status from DynamoDB
-                analysis = get_analysis_status(request_id)
+            if not analysis:
+                st.error("❌ Analysis not found")
+                break
 
-                if not analysis:
-                    st.error("❌ Analysis not found")
-                    break
+            overall_status = analysis.get('overall_status', 'pending')
+            steps_status = analysis.get(
+                'analysis_result', {}).get('steps_status', {})
 
-                overall_status = analysis.get('overall_status', 'pending')
-                steps_status = analysis.get(
-                    'analysis_result', {}).get('steps_status', {})
+            # Calculate overall progress
+            completed_steps = sum(1 for step in ANALYSIS_STEPS
+                                  if steps_status.get(step, {}).get('status') == 'completed')
+            progress = (completed_steps / len(ANALYSIS_STEPS)) * 100
 
-                # Calculate overall progress
-                completed_steps = sum(1 for step in ANALYSIS_STEPS
-                                      if steps_status.get(step, {}).get('status') == 'completed')
-                progress = (completed_steps / len(ANALYSIS_STEPS)) * 100
+            # Update progress bar
+            progress_bar.progress(int(progress))
 
-                # Update progress bar
-                progress_bar.progress(int(progress))
+            # Update overall status
+            status_emoji = {
+                'completed': '✅',
+                'processing': '🔄',
+                'failed': '❌',
+                'pending': '⏳'
+            }.get(overall_status, '❓')
 
-                # Update overall status
-                status_emoji = {
-                    'completed': '✅',
-                    'processing': '🔄',
-                    'failed': '❌',
-                    'pending': '⏳'
-                }.get(overall_status, '❓')
+            overall_status_text.markdown(
+                f"**Overall Status:** {status_emoji} {overall_status.title()} "
+                f"({completed_steps}/{len(ANALYSIS_STEPS)} steps completed)"
+            )
 
-                overall_status_text.markdown(
-                    f"**Overall Status:** {status_emoji} {overall_status.title()} "
-                    f"({completed_steps}/{len(ANALYSIS_STEPS)} steps completed)"
-                )
+            # Update metrics using placeholders
+            with status_metric.container():
+                st.metric("Status", analysis.get('overall_status', 'unknown'))
 
-                # Basic info (same as analysis history)
-                col1, col2, col3 = st.columns(3)
-
-                with col1:
-                    st.metric("Status", analysis.get(
-                        'overall_status', 'unknown'))
-
-                with col2:
-                    created_at = analysis.get('created_at', 'unknown')
-                    if created_at != 'unknown':
-                        try:
-                            parsed_date = pd.to_datetime(
-                                created_at, errors='coerce')
-                            if not pd.isna(parsed_date):
-                                formatted_date = parsed_date.strftime(
-                                    '%Y-%m-%d %H:%M:%S')
-                                st.metric("Created", formatted_date)
-                            else:
-                                st.metric("Created", created_at)
-                        except:
+            with created_metric.container():
+                created_at = analysis.get('created_at', 'unknown')
+                if created_at != 'unknown':
+                    try:
+                        parsed_date = pd.to_datetime(
+                            created_at, errors='coerce')
+                        if not pd.isna(parsed_date):
+                            formatted_date = parsed_date.strftime(
+                                '%Y-%m-%d %H:%M:%S')
+                            st.metric("Created", formatted_date)
+                        else:
                             st.metric("Created", created_at)
-                    else:
+                    except:
                         st.metric("Created", created_at)
+                else:
+                    st.metric("Created", created_at)
 
-                with col3:
-                    updated_at = analysis.get('updated_at', 'unknown')
-                    if updated_at != 'unknown':
-                        try:
-                            parsed_date = pd.to_datetime(
-                                updated_at, errors='coerce')
-                            if not pd.isna(parsed_date):
-                                formatted_date = parsed_date.strftime(
-                                    '%Y-%m-%d %H:%M:%S')
-                                st.metric("Updated", formatted_date)
-                            else:
-                                st.metric("Updated", updated_at)
-                        except:
+            with updated_metric.container():
+                updated_at = analysis.get('updated_at', 'unknown')
+                if updated_at != 'unknown':
+                    try:
+                        parsed_date = pd.to_datetime(
+                            updated_at, errors='coerce')
+                        if not pd.isna(parsed_date):
+                            formatted_date = parsed_date.strftime(
+                                '%Y-%m-%d %H:%M:%S')
+                            st.metric("Updated", formatted_date)
+                        else:
                             st.metric("Updated", updated_at)
-                    else:
+                    except:
                         st.metric("Updated", updated_at)
+                else:
+                    st.metric("Updated", updated_at)
 
-                # Research data info
+            # Update research data
+            with research_data_text.container():
                 st.markdown("### 📁 Research Data")
                 research_data = analysis.get('research_data', '')
                 st.text(f"S3 Path: {research_data}")
 
-                # Step status (same detailed display as analysis history)
+            # Update steps section
+            with steps_section.container():
                 st.markdown("### 🔄 Analysis Steps")
 
                 for step_name in ANALYSIS_STEPS:
@@ -410,7 +423,8 @@ def monitor_analysis_progress(request_id):
                                 if not pd.isna(parsed_completed):
                                     formatted_completed = parsed_completed.strftime(
                                         '%H:%M:%S')
-                                    st.write(f"**Completed:** {completed_at}")
+                                    st.write(
+                                        f"**Completed:** {formatted_completed}")
                                 else:
                                     st.write(f"**Completed:** {completed_at}")
                             except:
@@ -418,7 +432,8 @@ def monitor_analysis_progress(request_id):
 
                     st.divider()
 
-                # Results section (when completed)
+            # Update results section
+            with results_section.container():
                 result_data = analysis.get(
                     'analysis_result', {}).get('result_data', '')
                 if result_data:
@@ -435,19 +450,21 @@ def monitor_analysis_progress(request_id):
                             else:
                                 st.error("❌ Failed to load results from S3")
 
-                # Check if analysis is complete
-                if overall_status == 'completed':
+            # Check if analysis is complete
+            if overall_status == 'completed':
+                with completion_message.container():
                     st.success("🎉 Analysis completed successfully!")
-                    break
-                elif overall_status == 'failed':
-                    st.error("❌ Analysis failed")
-                    break
-
-                time.sleep(2)  # Check every 2 seconds
-
-            except Exception as e:
-                st.error(f"❌ Error monitoring progress: {str(e)}")
                 break
+            elif overall_status == 'failed':
+                with completion_message.container():
+                    st.error("❌ Analysis failed")
+                break
+
+            time.sleep(2)  # Check every 2 seconds
+
+        except Exception as e:
+            st.error(f"❌ Error monitoring progress: {str(e)}")
+            break
 
 
 def show_analysis_history():
