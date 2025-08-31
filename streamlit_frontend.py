@@ -27,6 +27,7 @@ AWS_REGION = os.getenv('AWS_REGION', os.getenv('S3_REGION', 'us-east-1'))
 STORAGE_TYPE = os.getenv('STORAGE_TYPE', 'local')
 S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME', '')
 S3_PREFIX = os.getenv('S3_PREFIX', 'design-analysis')
+S3_REGION = os.getenv('S3_REGION', 'us-east-1')
 DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
 
 # Analysis steps in order
@@ -912,7 +913,11 @@ def load_analysis_results(request_id):
     """Load analysis results from S3"""
     try:
         from s3_storage import create_s3_storage
-        storage = create_s3_storage()
+        storage = create_s3_storage(
+            bucket_name=S3_BUCKET_NAME,
+            region=S3_REGION,
+            prefix=S3_PREFIX
+        )
         results = storage.load_analysis(request_id)
         return results
     except Exception as e:
