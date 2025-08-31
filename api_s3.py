@@ -1,13 +1,22 @@
 #!/usr/bin/env python3
 """
 Design Analysis API with S3 Storage Support
-FastAPI application with configurable storage (local or S3)
+FastAPI application with configurable storage (local or S3) and DynamoDB tracking
 """
 
 from s3_storage import create_s3_storage, S3Storage
 from agentic_analysis import run_agentic_analysis
 from hybrid_agentic_analysis import run_hybrid_agentic_analysis
 from openai_agentic_analysis import run_openai_agentic_analysis
+
+# Import DynamoDB tracker
+try:
+    from dynamodb_tracker import create_dynamodb_tracker
+    DYNAMODB_AVAILABLE = True
+except ImportError:
+    DYNAMODB_AVAILABLE = False
+    print("⚠️ DynamoDB tracker not available - status tracking disabled")
+
 import os
 import json
 import argparse
@@ -63,6 +72,10 @@ S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
 S3_REGION = os.getenv("S3_REGION", "us-east-1")
 S3_PREFIX = os.getenv("S3_PREFIX", "design-analysis")
 
+# DynamoDB configuration
+DYNAMODB_TABLE_NAME = os.getenv(
+    "DYNAMODB_TABLE_NAME", "design-analysis-tracking")
+
 # Server configuration
 DEFAULT_PORT = int(os.getenv("API_PORT", "8000"))
 DEFAULT_HOST = os.getenv("API_HOST", "0.0.0.0")
@@ -70,6 +83,16 @@ DEFAULT_HOST = os.getenv("API_HOST", "0.0.0.0")
 # Local file storage configuration
 RESULTS_DIR = Path("analysis_results")
 RESULTS_DIR.mkdir(exist_ok=True)
+
+# Initialize DynamoDB tracker if available
+tracker = None
+if DYNAMODB_AVAILABLE:
+    try:
+        tracker = create_dynamodb_tracker(DYNAMODB_TABLE_NAME)
+        logger.info("✅ DynamoDB tracker initialized")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to initialize DynamoDB tracker: {e}")
+        tracker = None
 
 
 class LocalAnalysisStorage:
@@ -572,6 +595,15 @@ async def analyze_research_data(request: AnalysisRequest):
         # Run analysis based on implementation choice
         logger.info(
             f"🔍 Starting analysis with implementation: {request.implementation}")
+
+        # Prepare S3 path for DynamoDB tracking
+        research_data_s3_path = None
+        if request.s3_file_path:
+            research_data_s3_path = request.s3_file_path
+        elif STORAGE_TYPE == "s3":
+            # If using S3 storage but no S3 path provided, create one
+            research_data_s3_path = f"{S3_PREFIX}/research-data/{request_id}.txt"
+
         if request.implementation == "openai":
             logger.info(
                 f"🤖 Running OpenAI agentic analysis for request {request_id}")
@@ -579,7 +611,8 @@ async def analyze_research_data(request: AnalysisRequest):
         elif request.implementation == "hybrid":
             logger.info(
                 f"🔄 Running hybrid agentic analysis for request {request_id}")
-            result = run_hybrid_agentic_analysis(research_data)
+            result = run_hybrid_agentic_analysis(
+                research_data, request_id, research_data_s3_path)
         else:  # langchain
             logger.info(
                 f"🔗 Running LangChain agentic analysis for request {request_id}")
@@ -889,6 +922,61 @@ async def delete_research_file(file_id: str):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to delete file: {str(e)}")
+
+
+@app.get("/analysis/status/{request_id}")
+async def get_analysis_status(request_id: str):
+    """Get the current status of an analysis request from DynamoDB"""
+    if not tracker:
+        raise HTTPException(
+            status_code=503,
+            detail="DynamoDB tracking not available"
+        )
+
+    try:
+        status = tracker.get_analysis_status(request_id)
+        if not status:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Analysis request {request_id} not found"
+            )
+
+        return {
+            "request_id": request_id,
+            "status": status
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to get analysis status for {request_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get analysis status: {str(e)}"
+        )
+
+
+@app.get("/analysis/requests")
+async def list_analysis_requests(limit: int = 50):
+    """List recent analysis requests from DynamoDB"""
+    if not tracker:
+        raise HTTPException(
+            status_code=503,
+            detail="DynamoDB tracking not available"
+        )
+
+    try:
+        requests = tracker.list_analysis_requests(limit)
+        return {
+            "requests": requests,
+            "total": len(requests),
+            "limit": limit
+        }
+    except Exception as e:
+        logger.error(f"❌ Failed to list analysis requests: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list analysis requests: {str(e)}"
+        )
 
 
 @app.get("/storage/info")

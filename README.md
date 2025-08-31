@@ -500,6 +500,15 @@ class DesignAnalysisState(TypedDict):
 - **Result Storage**: Store and retrieve analysis results
 - **Health Monitoring**: API health checks and statistics
 
+### Real-Time Tracking
+
+- **DynamoDB Integration**: Real-time step-by-step progress tracking
+- **Status Monitoring**: Track each analysis step (pending, processing, completed, failed)
+- **Progress API**: Get current status of any analysis request
+- **Audit Trail**: Complete history of all analysis requests
+- **Error Detection**: Identify and track failed steps
+- **Scalable Tracking**: Handle multiple concurrent analysis requests
+
 ## Example Output
 
 ```

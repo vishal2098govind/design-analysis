@@ -5,7 +5,7 @@ Combines LangChain/LangGraph orchestration with OpenAI's native agentic framewor
 
 import os
 import json
-from typing import Dict, List, Any, TypedDict
+from typing import Dict, List, Any, TypedDict, Optional
 from dotenv import load_dotenv
 from openai import OpenAI
 from langchain_openai import ChatOpenAI
@@ -14,6 +14,14 @@ from langchain_core.output_parsers import JsonOutputParser
 from langgraph.graph import StateGraph, END
 from pydantic import BaseModel, Field
 import uuid
+
+# Import DynamoDB tracker
+try:
+    from dynamodb_tracker import StepStatus, create_dynamodb_tracker
+    DYNAMODB_AVAILABLE = True
+except ImportError:
+    DYNAMODB_AVAILABLE = False
+    print("⚠️ DynamoDB tracker not available - status tracking disabled")
 
 # Load environment variables
 load_dotenv()
@@ -27,6 +35,16 @@ llm = ChatOpenAI(
     temperature=0.1,
     api_key=os.getenv("OPENAI_API_KEY")
 )
+
+# Initialize DynamoDB tracker if available
+tracker = None
+if DYNAMODB_AVAILABLE:
+    try:
+        tracker = create_dynamodb_tracker()
+        print("✅ DynamoDB tracker initialized")
+    except Exception as e:
+        print(f"⚠️ Failed to initialize DynamoDB tracker: {e}")
+        tracker = None
 
 # State definition for LangGraph
 
@@ -240,6 +258,14 @@ def get_design_principle_functions():
 def chunk_research_data(state: DesignAnalysisState) -> DesignAnalysisState:
     """Node 1: Break research data into chunks using LangChain output parser"""
 
+    # Update DynamoDB status to processing
+    request_id = state.get('analysis_metadata', {}).get('request_id')
+    if tracker and request_id:
+        tracker.update_step_status(
+            request_id, "chunking", StepStatus.PROCESSING,
+            "Starting to chunk research data"
+        )
+
     # Create output parser for chunks
     chunk_parser = JsonOutputParser(pydantic_object=Chunk)
 
@@ -270,14 +296,14 @@ Return a JSON array of chunks."""
             "content": f"Please chunk the following research data:\n\n{state['research_data']}"}
     ]
 
-    # Use OpenAI with LangChain output parser
-    response = openai_client.chat.completions.create(
-        model="gpt-4-turbo-preview",
-        messages=messages,
-        temperature=0.1
-    )
-
     try:
+        # Use OpenAI with LangChain output parser
+        response = openai_client.chat.completions.create(
+            model="gpt-4-turbo-preview",
+            messages=messages,
+            temperature=0.1
+        )
+
         # Parse the response to get structured chunks
         parsed_chunks = chunk_parser.parse(response.choices[0].message.content)
         chunks = parsed_chunks if isinstance(
@@ -287,6 +313,13 @@ Return a JSON array of chunks."""
         for chunk in chunks:
             if not hasattr(chunk, 'id') or not chunk.id:
                 chunk.id = f"chunk_{uuid.uuid4().hex[:8]}"
+
+        # Update DynamoDB status to completed
+        if tracker and request_id:
+            tracker.update_step_status(
+                request_id, "chunking", StepStatus.COMPLETED,
+                f"Successfully created {len(chunks)} chunks"
+            )
 
     except Exception as e:
         # Fallback to rule-based chunking if parsing fails
@@ -308,6 +341,13 @@ Return a JSON array of chunks."""
                 "tags": tags
             })
 
+        # Update DynamoDB status to completed (with fallback)
+        if tracker and request_id:
+            tracker.update_step_status(
+                request_id, "chunking", StepStatus.COMPLETED,
+                f"Created {len(chunks)} chunks using fallback method"
+            )
+
     return {
         **state,
         "chunks": chunks,
@@ -318,6 +358,14 @@ Return a JSON array of chunks."""
 
 def infer_meanings(state: DesignAnalysisState) -> DesignAnalysisState:
     """Node 2: Interpret chunks and extract meanings using LangChain output parser"""
+
+    # Update DynamoDB status to processing
+    request_id = state.get('analysis_metadata', {}).get('request_id')
+    if tracker and request_id:
+        tracker.update_step_status(
+            request_id, "inferring", StepStatus.PROCESSING,
+            "Starting to infer meanings from chunks"
+        )
 
     # Create output parser for inferences
     inference_parser = JsonOutputParser(pydantic_object=Inference)
@@ -347,19 +395,27 @@ Return a JSON array of inferences."""
         {"role": "user", "content": f"Please interpret the following chunks:\n\n{chunks_text}"}
     ]
 
-    # Use OpenAI with LangChain output parser
-    response = openai_client.chat.completions.create(
-        model="gpt-4-turbo-preview",
-        messages=messages,
-        temperature=0.1
-    )
-
     try:
+        # Use OpenAI with LangChain output parser
+        response = openai_client.chat.completions.create(
+            model="gpt-4-turbo-preview",
+            messages=messages,
+            temperature=0.1
+        )
+
         # Parse the response to get structured inferences
         parsed_inferences = inference_parser.parse(
             response.choices[0].message.content)
         inferences = parsed_inferences if isinstance(
             parsed_inferences, list) else [parsed_inferences]
+
+        # Update DynamoDB status to completed
+        if tracker and request_id:
+            tracker.update_step_status(
+                request_id, "inferring", StepStatus.COMPLETED,
+                f"Successfully generated {len(inferences)} inferences"
+            )
+
     except Exception as e:
         # Fallback to rule-based inference if parsing fails
         print(f"Parsing failed, using fallback: {e}")
@@ -387,6 +443,13 @@ Return a JSON array of inferences."""
                 "reasoning": "Based on user feedback patterns"
             })
 
+        # Update DynamoDB status to completed (with fallback)
+        if tracker and request_id:
+            tracker.update_step_status(
+                request_id, "inferring", StepStatus.COMPLETED,
+                f"Generated {len(inferences)} inferences using fallback method"
+            )
+
     return {
         **state,
         "inferences": inferences,
@@ -397,6 +460,14 @@ Return a JSON array of inferences."""
 
 def relate_patterns(state: DesignAnalysisState) -> DesignAnalysisState:
     """Node 3: Find patterns across meanings using LangChain output parser"""
+
+    # Update DynamoDB status to processing
+    request_id = state.get('analysis_metadata', {}).get('request_id')
+    if tracker and request_id:
+        tracker.update_step_status(
+            request_id, "relating", StepStatus.PROCESSING,
+            "Starting to identify patterns across meanings"
+        )
 
     # Create output parser for patterns
     pattern_parser = JsonOutputParser(pydantic_object=Pattern)
@@ -426,19 +497,27 @@ Return a JSON array of patterns."""
         {"role": "user", "content": f"Please identify patterns in the following inferences:\n\n{inferences_text}"}
     ]
 
-    # Use OpenAI with LangChain output parser
-    response = openai_client.chat.completions.create(
-        model="gpt-4-turbo-preview",
-        messages=messages,
-        temperature=0.1
-    )
-
     try:
+        # Use OpenAI with LangChain output parser
+        response = openai_client.chat.completions.create(
+            model="gpt-4-turbo-preview",
+            messages=messages,
+            temperature=0.1
+        )
+
         # Parse the response to get structured patterns
         parsed_patterns = pattern_parser.parse(
             response.choices[0].message.content)
         patterns = parsed_patterns if isinstance(
             parsed_patterns, list) else [parsed_patterns]
+
+        # Update DynamoDB status to completed
+        if tracker and request_id:
+            tracker.update_step_status(
+                request_id, "relating", StepStatus.COMPLETED,
+                f"Successfully identified {len(patterns)} patterns"
+            )
+
     except Exception as e:
         # Fallback to rule-based pattern detection if parsing fails
         print(f"Parsing failed, using fallback: {e}")
@@ -474,6 +553,13 @@ Return a JSON array of patterns."""
                 "evidence_count": len(clarity_inferences)
             })
 
+        # Update DynamoDB status to completed (with fallback)
+        if tracker and request_id:
+            tracker.update_step_status(
+                request_id, "relating", StepStatus.COMPLETED,
+                f"Identified {len(patterns)} patterns using fallback method"
+            )
+
     return {
         **state,
         "patterns": patterns,
@@ -484,6 +570,14 @@ Return a JSON array of patterns."""
 
 def explain_insights(state: DesignAnalysisState) -> DesignAnalysisState:
     """Node 4: Generate insights from patterns using LangChain output parser"""
+
+    # Update DynamoDB status to processing
+    request_id = state.get('analysis_metadata', {}).get('request_id')
+    if tracker and request_id:
+        tracker.update_step_status(
+            request_id, "explaining", StepStatus.PROCESSING,
+            "Starting to generate insights from patterns"
+        )
 
     # Create output parser for insights
     insight_parser = JsonOutputParser(pydantic_object=Insight)
@@ -516,19 +610,27 @@ Return a JSON array of insights."""
         {"role": "user", "content": f"Please generate insights from the following patterns:\n\n{patterns_text}"}
     ]
 
-    # Use OpenAI with LangChain output parser
-    response = openai_client.chat.completions.create(
-        model="gpt-4-turbo-preview",
-        messages=messages,
-        temperature=0.1
-    )
-
     try:
+        # Use OpenAI with LangChain output parser
+        response = openai_client.chat.completions.create(
+            model="gpt-4-turbo-preview",
+            messages=messages,
+            temperature=0.1
+        )
+
         # Parse the response to get structured insights
         parsed_insights = insight_parser.parse(
             response.choices[0].message.content)
         insights = parsed_insights if isinstance(
             parsed_insights, list) else [parsed_insights]
+
+        # Update DynamoDB status to completed
+        if tracker and request_id:
+            tracker.update_step_status(
+                request_id, "explaining", StepStatus.COMPLETED,
+                f"Successfully generated {len(insights)} insights"
+            )
+
     except Exception as e:
         # Fallback to rule-based insight generation if parsing fails
         print(f"Parsing failed, using fallback: {e}")
@@ -555,6 +657,13 @@ Return a JSON array of insights."""
                     "supporting_evidence": ["User frustration with complex interfaces", "Preference for simple tools"]
                 })
 
+        # Update DynamoDB status to completed (with fallback)
+        if tracker and request_id:
+            tracker.update_step_status(
+                request_id, "explaining", StepStatus.COMPLETED,
+                f"Generated {len(insights)} insights using fallback method"
+            )
+
     return {
         **state,
         "insights": insights,
@@ -565,6 +674,14 @@ Return a JSON array of insights."""
 
 def activate_design_principles(state: DesignAnalysisState) -> DesignAnalysisState:
     """Node 5: Convert insights into design principles using LangChain output parser"""
+
+    # Update DynamoDB status to processing
+    request_id = state.get('analysis_metadata', {}).get('request_id')
+    if tracker and request_id:
+        tracker.update_step_status(
+            request_id, "activating", StepStatus.PROCESSING,
+            "Starting to create design principles from insights"
+        )
 
     # Create output parser for design principles
     principle_parser = JsonOutputParser(pydantic_object=DesignPrinciple)
@@ -594,19 +711,27 @@ Return a JSON array of design principles."""
         {"role": "user", "content": f"Please create design principles from the following insights:\n\n{insights_text}"}
     ]
 
-    # Use OpenAI with LangChain output parser
-    response = openai_client.chat.completions.create(
-        model="gpt-4-turbo-preview",
-        messages=messages,
-        temperature=0.1
-    )
-
     try:
+        # Use OpenAI with LangChain output parser
+        response = openai_client.chat.completions.create(
+            model="gpt-4-turbo-preview",
+            messages=messages,
+            temperature=0.1
+        )
+
         # Parse the response to get structured design principles
         parsed_principles = principle_parser.parse(
             response.choices[0].message.content)
         design_principles = parsed_principles if isinstance(
             parsed_principles, list) else [parsed_principles]
+
+        # Update DynamoDB status to completed
+        if tracker and request_id:
+            tracker.update_step_status(
+                request_id, "activating", StepStatus.COMPLETED,
+                f"Successfully created {len(design_principles)} design principles"
+            )
+
     except Exception as e:
         # Fallback to rule-based design principle generation if parsing fails
         print(f"Parsing failed, using fallback: {e}")
@@ -630,6 +755,13 @@ Return a JSON array of design principles."""
                     "priority": insight['impact_score'],
                     "feasibility": 0.82
                 })
+
+        # Update DynamoDB status to completed (with fallback)
+        if tracker and request_id:
+            tracker.update_step_status(
+                request_id, "activating", StepStatus.COMPLETED,
+                f"Created {len(design_principles)} design principles using fallback method"
+            )
 
     return {
         **state,
@@ -665,11 +797,19 @@ def create_hybrid_agentic_graph():
     return workflow.compile()
 
 
-def run_hybrid_agentic_analysis(research_data: str) -> Dict[str, Any]:
+def run_hybrid_agentic_analysis(research_data: str, request_id: Optional[str] = None, research_data_s3_path: Optional[str] = None) -> Dict[str, Any]:
     """Run the complete hybrid agentic design analysis workflow"""
 
     # Create the LangGraph workflow
     graph = create_hybrid_agentic_graph()
+
+    # Generate request ID if not provided
+    if not request_id:
+        request_id = f"analysis_{uuid.uuid4().hex[:8]}"
+
+    # Initialize DynamoDB tracking if available
+    if tracker and research_data_s3_path:
+        tracker.create_analysis_request(request_id, research_data_s3_path)
 
     # Initialize state
     initial_state = {
@@ -682,10 +822,12 @@ def run_hybrid_agentic_analysis(research_data: str) -> Dict[str, Any]:
         "current_step": "initialized",
         "messages": [],
         "analysis_metadata": {
+            "request_id": request_id,
             "framework": "Hybrid (LangGraph + OpenAI Agentic)",
             "model": "gpt-4-turbo-preview",
             "orchestration": "LangGraph",
-            "function_calling": "OpenAI Native"
+            "function_calling": "OpenAI Native",
+            "research_data_s3_path": research_data_s3_path
         }
     }
 
