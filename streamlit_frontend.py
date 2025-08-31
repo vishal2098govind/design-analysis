@@ -501,13 +501,63 @@ def show_analysis_history():
 
         st.dataframe(display_df, use_container_width=True)
 
+        # Create user-friendly dropdown options with formatted timestamps
+        def format_dropdown_option(row):
+            """Format dropdown option with timestamp and status"""
+            request_id = row['request_id']
+            status = row['overall_status']
+            created_at = row['created_at']
+
+            # Format timestamp
+            if pd.notna(created_at):
+                try:
+                    formatted_time = created_at.strftime('%Y-%m-%d %H:%M')
+                except:
+                    formatted_time = str(created_at)
+            else:
+                formatted_time = "Unknown time"
+
+            # Create status emoji
+            status_emoji = {
+                'completed': '✅',
+                'processing': '🔄',
+                'failed': '❌',
+                'pending': '⏳'
+            }.get(status, '❓')
+
+            return f"{status_emoji} {formatted_time} - {request_id[:12]}..."
+
+        # Create dropdown options
+        dropdown_options = []
+        for _, row in df.iterrows():
+            dropdown_options.append(format_dropdown_option(row))
+
         # Show details for selected analysis
-        selected_id = st.selectbox(
+        selected_option = st.selectbox(
             "Select Analysis to View Details:",
-            df['request_id'].tolist()
+            dropdown_options,
+            format_func=lambda x: x,
+            help="Select an analysis to view detailed information. The dropdown shows status, timestamp, and a shortened request ID."
         )
 
+        # Extract request_id from selected option
+        if selected_option:
+            try:
+                # Extract request_id from the end of the option string
+                selected_id = selected_option.split(
+                    " - ")[-1].replace("...", "")
+                # Find the full request_id that starts with this prefix
+                for _, row in df.iterrows():
+                    if row['request_id'].startswith(selected_id):
+                        selected_id = row['request_id']
+                        break
+            except:
+                # Fallback: try to extract from the original format
+                selected_id = selected_option
+
         if selected_id:
+            # Show the full request ID for reference
+            st.info(f"📋 Full Request ID: `{selected_id}`")
             show_analysis_details(selected_id)
     else:
         st.info("No analyses found matching the criteria.")
@@ -863,7 +913,7 @@ def load_analysis_results(request_id):
     try:
         from s3_storage import create_s3_storage
         storage = create_s3_storage()
-        results = storage.load_analysis_result(request_id)
+        results = storage.load_analysis(request_id)
         return results
     except Exception as e:
         st.error(f"Error loading results: {e}")
