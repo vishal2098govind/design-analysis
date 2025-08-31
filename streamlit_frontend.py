@@ -1031,7 +1031,7 @@ def display_analysis_results(results=None, steps_status=None, is_realtime=False)
             if insight_status == 'completed':
                 if results and 'insights' in results and results['insights']:
                     for i, insight in enumerate(results['insights'][:10]):
-                        with st.expander(f"Insight {i+1}"):
+                        with st.expander(f"Insight: {insight.get('headline', f'{i+1}')}"):
                             st.write(
                                 f"**Headline:** {insight.get('headline', '')}")
                             st.write(
@@ -1066,7 +1066,7 @@ def display_analysis_results(results=None, steps_status=None, is_realtime=False)
             # Final results display
             if results and 'insights' in results and results['insights']:
                 for i, insight in enumerate(results['insights'][:10]):
-                    with st.expander(f"Insight {i+1}"):
+                    with st.expander(f"Insight: {insight.get('headline', f'{i+1}')}"):
                         st.write(
                             f"**Headline:** {insight.get('headline', '')}")
                         st.write(
@@ -1094,7 +1094,7 @@ def display_analysis_results(results=None, steps_status=None, is_realtime=False)
             if principle_status == 'completed':
                 if results and 'design_principles' in results and results['design_principles']:
                     for i, principle in enumerate(results['design_principles'][:10]):
-                        with st.expander(f"Principle {i+1}"):
+                        with st.expander(f"Principle: {principle.get('principle', f'{i+1}')}"):
                             st.write(
                                 f"**Principle:** {principle.get('principle', '')}")
                             st.write(
@@ -1127,7 +1127,7 @@ def display_analysis_results(results=None, steps_status=None, is_realtime=False)
             # Final results display
             if results and 'design_principles' in results and results['design_principles']:
                 for i, principle in enumerate(results['design_principles'][:10]):
-                    with st.expander(f"Principle {i+1}"):
+                    with st.expander(f"Principle: {principle.get('principle', f'{i+1}')}"):
                         st.write(
                             f"**Principle:** {principle.get('principle', '')}")
                         st.write(
