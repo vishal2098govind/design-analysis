@@ -172,8 +172,40 @@ def show_new_analysis():
         )
 
         if uploaded_file is not None:
-            research_data = uploaded_file.getvalue().decode('utf-8')
-            st.success(f"✅ File uploaded: {uploaded_file.name}")
+            # Show file info
+            st.info(
+                f"📁 File selected: {uploaded_file.name} ({uploaded_file.size} bytes)")
+
+            # Upload button
+            if st.button("📤 Upload to S3", type="secondary"):
+                with st.spinner("Uploading file to S3..."):
+                    upload_result = upload_file_to_s3(uploaded_file)
+
+                    if upload_result:
+                        s3_file_path = upload_result.get('s3_path')
+                        st.success(f"✅ File uploaded successfully!")
+                        st.info(f"📋 File ID: {upload_result.get('file_id')}")
+                        st.info(f"🔗 S3 Path: `{s3_file_path}`")
+                        st.info(
+                            f"📊 File Size: {upload_result.get('file_size')} bytes")
+                        st.info(
+                            f"⏰ Upload Time: {upload_result.get('upload_time')}")
+
+                        # Store the S3 path for analysis
+                        st.session_state['uploaded_s3_path'] = s3_file_path
+                    else:
+                        st.error("❌ Failed to upload file to S3")
+
+            # Show uploaded file info if available
+            if 'uploaded_s3_path' in st.session_state:
+                st.success(
+                    f"✅ File ready for analysis: {st.session_state['uploaded_s3_path']}")
+                s3_file_path = st.session_state['uploaded_s3_path']
+
+                # Option to clear uploaded file
+                if st.button("🗑️ Clear Uploaded File", type="secondary"):
+                    del st.session_state['uploaded_s3_path']
+                    st.rerun()
 
     elif input_method == "📝 Direct Text Input":
         research_data = st.text_area(
@@ -195,11 +227,19 @@ def show_new_analysis():
     # Submit analysis
     st.markdown("### Submit Analysis")
 
-    if st.button("🚀 Start Analysis", type="primary", disabled=not (research_data or s3_file_path)):
-        if research_data or s3_file_path:
+    # Determine if we have data to analyze
+    has_research_data = bool(research_data)
+    has_s3_file = bool(s3_file_path) or (
+        'uploaded_s3_path' in st.session_state)
+
+    # Get the actual S3 path for analysis
+    analysis_s3_path = s3_file_path or st.session_state.get('uploaded_s3_path')
+
+    if st.button("🚀 Start Analysis", type="primary", disabled=not (has_research_data or has_s3_file)):
+        if has_research_data or has_s3_file:
             with st.spinner("Starting analysis..."):
                 result = submit_analysis(
-                    research_data, s3_file_path, implementation, include_metadata)
+                    research_data, analysis_s3_path, implementation, include_metadata)
 
                 if result:
                     st.success("✅ Analysis started successfully!")
@@ -883,6 +923,29 @@ def get_analysis_details(request_id):
         return tracker.get_analysis_status(request_id)
     except Exception as e:
         st.error(f"Error getting analysis details: {e}")
+        return None
+
+
+def upload_file_to_s3(uploaded_file):
+    """Upload file to S3 via API"""
+    try:
+        url = f"{API_BASE_URL}/upload"
+
+        # Prepare file for upload
+        files = {
+            'file': (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)
+        }
+
+        response = requests.post(url, files=files, timeout=60)
+
+        if response.status_code == 200:
+            return response.json()
+        else:
+            st.error(
+                f"Upload API Error: {response.status_code} - {response.text}")
+            return None
+    except Exception as e:
+        st.error(f"Error uploading file: {e}")
         return None
 
 
