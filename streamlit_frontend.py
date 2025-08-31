@@ -454,6 +454,11 @@ def monitor_analysis_progress(request_id):
 
             # Check if analysis is complete
             if overall_status == 'completed':
+                steps_section.empty()
+                results_section.empty()
+                research_data_text.empty()
+                completion_message.empty()
+                st.success("🎉 Analysis completed successfully!")
                 st.markdown("### 📄 Final Analysis Results")
                 with st.spinner("Loading final results from S3..."):
                     results = load_analysis_results(request_id)
