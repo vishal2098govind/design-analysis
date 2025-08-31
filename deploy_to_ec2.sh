@@ -1,8 +1,9 @@
 #!/bin/bash
-# Quick EC2 Deployment Script for Design Analysis API
-# This script automates the deployment process
 
-set -e  # Exit on any error
+# Design Analysis System Deployment Script
+# Deploys both FastAPI backend and Streamlit frontend
+
+set -e
 
 # Colors for output
 RED='\033[0;31m'
@@ -11,289 +12,128 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Function to print colored output
-print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
+# Configuration
+EC2_HOST=""
+EC2_USER="ubuntu"
+PROJECT_DIR="/home/ubuntu/design_analysis"
+VENV_DIR="$PROJECT_DIR/venv"
 
-print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
+echo -e "${BLUE}🚀 Design Analysis System Deployment${NC}"
+echo "=================================="
 
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Function to check prerequisites
-check_prerequisites() {
-    print_status "Checking prerequisites..."
-    
-    # Check AWS CLI
-    if ! command -v aws &> /dev/null; then
-        print_error "AWS CLI is not installed. Please install it first."
-        exit 1
-    fi
-    
-    # Check AWS credentials
-    if ! aws sts get-caller-identity &> /dev/null; then
-        print_error "AWS credentials not configured. Please run 'aws configure' first."
-        exit 1
-    fi
-    
-    # Check Terraform
-    if ! command -v terraform &> /dev/null; then
-        print_error "Terraform is not installed. Please install it first."
-        exit 1
-    fi
-    
-    print_success "All prerequisites are met!"
-}
-
-# Function to get user input
-get_user_input() {
-    print_status "Please provide the following information:"
-    
-    # Get OpenAI API key
-    read -p "OpenAI API Key: " openai_api_key
-    if [ -z "$openai_api_key" ]; then
-        print_error "OpenAI API key is required!"
-        exit 1
-    fi
-    
-    # Get EC2 key pair name
-    read -p "EC2 Key Pair Name: " key_pair_name
-    if [ -z "$key_pair_name" ]; then
-        print_error "EC2 key pair name is required!"
-        exit 1
-    fi
-    
-    # Get user's IP address for SSH access
-    read -p "Your IP Address (for SSH access, or press Enter for 0.0.0.0/0): " user_ip
-    if [ -z "$user_ip" ]; then
-        allowed_ssh_cidr="0.0.0.0/0"
-    else
-        allowed_ssh_cidr="${user_ip}/32"
-    fi
-    
-    # Get instance type
-    read -p "Instance Type (t3.micro/t3.small/t3.medium/t3.large) [t3.medium]: " instance_type
-    instance_type=${instance_type:-t3.medium}
-    
-    # Get region
-    read -p "AWS Region [us-east-1]: " aws_region
-    aws_region=${aws_region:-us-east-1}
-    
-    # Get S3 bucket name
-    read -p "S3 Bucket Name [design-analysis-production]: " s3_bucket_name
-    s3_bucket_name=${s3_bucket_name:-design-analysis-production}
-    
-    # Get repository URL
-    read -p "Git Repository URL [https://github.com/yourusername/design-analysis.git]: " repo_url
-    repo_url=${repo_url:-https://github.com/yourusername/design-analysis.git}
-    
-    # Ask for Elastic IP
-    read -p "Create Elastic IP? (y/N): " create_eip
-    create_eip=${create_eip:-n}
-    
-    print_success "Configuration collected!"
-}
-
-# Function to create Terraform configuration
-create_terraform_config() {
-    print_status "Creating Terraform configuration..."
-    
-    # Create deployment directory
-    mkdir -p deployment/terraform
-    
-    # Copy Terraform files
-    cp deployment/terraform/main.tf deployment/terraform/
-    cp deployment/terraform/variables.tf deployment/terraform/
-    
-    # Create terraform.tfvars
-    cat > deployment/terraform/terraform.tfvars << EOF
-# AWS Configuration
-aws_region = "${aws_region}"
-
-# EC2 Configuration
-instance_type     = "${instance_type}"
-key_pair_name     = "${key_pair_name}"
-root_volume_size  = 20
-
-# Security Configuration
-allowed_ssh_cidr = ["${allowed_ssh_cidr}"]
-allowed_api_cidr = ["0.0.0.0/0"]
-
-# Environment
-environment = "prod"
-
-# Application Configuration
-openai_api_key = "${openai_api_key}"
-s3_bucket_name = "${s3_bucket_name}"
-s3_prefix      = "design-analysis"
-repo_url       = "${repo_url}"
-
-# Network Configuration
-create_eip = ${create_eip}
-
-# Optional Features
-enable_cloudwatch_agent = true
-enable_ssl             = false
-domain_name            = ""
-backup_enabled         = true
-backup_retention_days  = 30
-
-# Tags
-tags = {
-  Project     = "Design Analysis"
-  ManagedBy   = "Terraform"
-  Environment = "production"
-  Owner       = "deployment-script"
-  CostCenter  = "engineering"
-}
-EOF
-    
-    print_success "Terraform configuration created!"
-}
-
-# Function to deploy with Terraform
-deploy_with_terraform() {
-    print_status "Deploying with Terraform..."
-    
-    cd deployment/terraform
-    
-    # Initialize Terraform
-    print_status "Initializing Terraform..."
-    terraform init
-    
-    # Plan deployment
-    print_status "Planning deployment..."
-    terraform plan
-    
-    # Ask for confirmation
-    read -p "Do you want to proceed with the deployment? (y/N): " confirm
-    if [[ ! $confirm =~ ^[Yy]$ ]]; then
-        print_warning "Deployment cancelled by user."
-        exit 0
-    fi
-    
-    # Apply configuration
-    print_status "Applying Terraform configuration..."
-    terraform apply -auto-approve
-    
-    # Get outputs
-    print_status "Getting deployment outputs..."
-    instance_ip=$(terraform output -raw public_ip)
-    api_url=$(terraform output -raw api_url)
-    health_url=$(terraform output -raw health_check_url)
-    
-    print_success "Deployment completed successfully!"
-    echo ""
-    echo "🌐 API URL: ${api_url}"
-    echo "🏥 Health Check: ${health_url}"
-    echo "🖥️  Instance IP: ${instance_ip}"
-    echo ""
-    
-    cd ../..
-}
-
-# Function to test deployment
-test_deployment() {
-    print_status "Testing deployment..."
-    
-    cd deployment/terraform
-    
-    # Get the health check URL
-    health_url=$(terraform output -raw health_check_url)
-    
-    # Wait for the application to start
-    print_status "Waiting for application to start (this may take a few minutes)..."
-    
-    for i in {1..30}; do
-        if curl -f -s "${health_url}" > /dev/null 2>&1; then
-            print_success "Application is responding!"
-            break
-        fi
-        
-        if [ $i -eq 30 ]; then
-            print_warning "Application is not responding after 5 minutes."
-            print_warning "You may need to check the instance manually."
-            break
-        fi
-        
-        echo -n "."
-        sleep 10
-    done
-    
-    # Test the API
-    print_status "Testing API endpoints..."
-    
-    # Health check
-    if curl -f -s "${health_url}" > /dev/null; then
-        print_success "Health check passed!"
-    else
-        print_warning "Health check failed!"
-    fi
-    
-    # Storage info
-    storage_url="${health_url%/health}/storage/info"
-    if curl -f -s "${storage_url}" > /dev/null; then
-        print_success "Storage info endpoint working!"
-    else
-        print_warning "Storage info endpoint failed!"
-    fi
-    
-    cd ../..
-}
-
-# Function to show next steps
-show_next_steps() {
-    print_status "Next steps:"
-    echo ""
-    echo "1. 🌐 Access your API at: $(cd deployment/terraform && terraform output -raw api_url)"
-    echo "2. 📊 Monitor logs: aws logs tail /aws/ec2/design-analysis --follow"
-    echo "3. 🔧 SSH to instance: ssh -i your-key.pem ec2-user@$(cd deployment/terraform && terraform output -raw public_ip)"
-    echo "4. 📝 View deployment logs: ssh -i your-key.pem ec2-user@$(cd deployment/terraform && terraform output -raw public_ip) 'cat /opt/design-analysis/deployment.log'"
-    echo "5. 🗑️  To destroy: cd deployment/terraform && terraform destroy"
-    echo ""
-    echo "📚 Documentation:"
-    echo "   - EC2 Deployment Guide: EC2_DEPLOYMENT_GUIDE.md"
-    echo "   - S3 Setup Guide: S3_SETUP_GUIDE.md"
-    echo "   - API Documentation: http://$(cd deployment/terraform && terraform output -raw api_url)/docs"
-    echo ""
-}
-
-# Main deployment function
-main() {
-    echo "🚀 Design Analysis API - EC2 Deployment Script"
-    echo "=============================================="
-    echo ""
-    
-    # Check prerequisites
-    check_prerequisites
-    
-    # Get user input
-    get_user_input
-    
-    # Create Terraform configuration
-    create_terraform_config
-    
-    # Deploy with Terraform
-    deploy_with_terraform
-    
-    # Test deployment
-    test_deployment
-    
-    # Show next steps
-    show_next_steps
-    
-    print_success "Deployment script completed!"
-}
-
-# Check if script is run directly
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    main "$@"
+# Check if host is provided
+if [ -z "$EC2_HOST" ]; then
+    echo -e "${YELLOW}Please set EC2_HOST environment variable or edit this script${NC}"
+    echo "Usage: EC2_HOST=your-ec2-ip ./deploy_to_ec2.sh"
+    exit 1
 fi
+
+echo -e "${GREEN}Deploying to: $EC2_HOST${NC}"
+
+# Function to run commands on EC2
+run_on_ec2() {
+    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$EC2_USER@$EC2_HOST" "$1"
+}
+
+# Function to copy files to EC2
+copy_to_ec2() {
+    scp -o StrictHostKeyChecking=no -o ConnectTimeout=10 -r "$1" "$EC2_USER@$EC2_HOST:$2"
+}
+
+echo -e "${BLUE}📋 Step 1: Checking EC2 connection...${NC}"
+if ! run_on_ec2 "echo 'Connection successful'"; then
+    echo -e "${RED}❌ Failed to connect to EC2 instance${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✅ EC2 connection successful${NC}"
+
+echo -e "${BLUE}📋 Step 2: Creating project directory...${NC}"
+run_on_ec2 "mkdir -p $PROJECT_DIR"
+echo -e "${GREEN}✅ Project directory created${NC}"
+
+echo -e "${BLUE}📋 Step 3: Copying project files...${NC}"
+copy_to_ec2 "." "$PROJECT_DIR/"
+echo -e "${GREEN}✅ Project files copied${NC}"
+
+echo -e "${BLUE}📋 Step 4: Installing system dependencies...${NC}"
+run_on_ec2 "sudo apt-get update && sudo apt-get install -y python3-pip python3-venv nginx"
+echo -e "${GREEN}✅ System dependencies installed${NC}"
+
+echo -e "${BLUE}📋 Step 5: Setting up Python virtual environment...${NC}"
+run_on_ec2 "cd $PROJECT_DIR && python3 -m venv venv"
+run_on_ec2 "cd $PROJECT_DIR && source venv/bin/activate && pip install --upgrade pip"
+echo -e "${GREEN}✅ Virtual environment created${NC}"
+
+echo -e "${BLUE}📋 Step 6: Installing Python dependencies...${NC}"
+run_on_ec2 "cd $PROJECT_DIR && source venv/bin/activate && pip install -r requirements.txt"
+echo -e "${GREEN}✅ Python dependencies installed${NC}"
+
+echo -e "${BLUE}📋 Step 7: Setting up Nginx configuration...${NC}"
+run_on_ec2 "sudo cp $PROJECT_DIR/deployment/nginx/nginx.conf /etc/nginx/nginx.conf"
+run_on_ec2 "sudo nginx -t"
+run_on_ec2 "sudo systemctl enable nginx"
+run_on_ec2 "sudo systemctl restart nginx"
+echo -e "${GREEN}✅ Nginx configured and started${NC}"
+
+echo -e "${BLUE}📋 Step 8: Setting up systemd services...${NC}"
+
+# API service
+run_on_ec2 "sudo cp $PROJECT_DIR/deployment/systemd/design-analysis-api.service /etc/systemd/system/"
+run_on_ec2 "sudo systemctl daemon-reload"
+run_on_ec2 "sudo systemctl enable design-analysis-api"
+
+# Streamlit frontend service
+run_on_ec2 "sudo cp $PROJECT_DIR/deployment/systemd/streamlit-frontend.service /etc/systemd/system/"
+run_on_ec2 "sudo systemctl daemon-reload"
+run_on_ec2 "sudo systemctl enable streamlit-frontend"
+
+echo -e "${GREEN}✅ Systemd services configured${NC}"
+
+echo -e "${BLUE}📋 Step 9: Setting up environment variables...${NC}"
+run_on_ec2 "cd $PROJECT_DIR && cp .env.example .env"
+echo -e "${YELLOW}⚠️  Please edit the .env file on the EC2 instance with your actual values${NC}"
+echo -e "${YELLOW}   Run: ssh $EC2_USER@$EC2_HOST 'nano $PROJECT_DIR/.env'${NC}"
+
+echo -e "${BLUE}📋 Step 10: Starting services...${NC}"
+run_on_ec2 "sudo systemctl start design-analysis-api"
+run_on_ec2 "sudo systemctl start streamlit-frontend"
+echo -e "${GREEN}✅ Services started${NC}"
+
+echo -e "${BLUE}📋 Step 11: Checking service status...${NC}"
+run_on_ec2 "sudo systemctl status design-analysis-api --no-pager -l"
+run_on_ec2 "sudo systemctl status streamlit-frontend --no-pager -l"
+run_on_ec2 "sudo systemctl status nginx --no-pager -l"
+
+echo -e "${BLUE}📋 Step 12: Testing endpoints...${NC}"
+echo -e "${YELLOW}Testing API health endpoint...${NC}"
+run_on_ec2 "curl -s http://localhost:8000/health || echo 'API not responding'"
+
+echo -e "${YELLOW}Testing frontend accessibility...${NC}"
+run_on_ec2 "curl -s http://localhost:8501 | head -20 || echo 'Frontend not responding'"
+
+echo -e "${YELLOW}Testing Nginx proxy...${NC}"
+run_on_ec2 "curl -s http://localhost/health || echo 'Nginx not responding'"
+
+echo ""
+echo -e "${GREEN}🎉 Deployment completed successfully!${NC}"
+echo ""
+echo -e "${BLUE}📊 Service Information:${NC}"
+echo -e "   API Backend: http://$EC2_HOST:8000"
+echo -e "   Frontend: http://$EC2_HOST:8501"
+echo -e "   Nginx Proxy: http://$EC2_HOST"
+echo ""
+echo -e "${BLUE}🔧 Management Commands:${NC}"
+echo -e "   Check API status: ssh $EC2_USER@$EC2_HOST 'sudo systemctl status design-analysis-api'"
+echo -e "   Check Frontend status: ssh $EC2_USER@$EC2_HOST 'sudo systemctl status streamlit-frontend'"
+echo -e "   Check Nginx status: ssh $EC2_USER@$EC2_HOST 'sudo systemctl status nginx'"
+echo -e "   View API logs: ssh $EC2_USER@$EC2_HOST 'sudo journalctl -u design-analysis-api -f'"
+echo -e "   View Frontend logs: ssh $EC2_USER@$EC2_HOST 'sudo journalctl -u streamlit-frontend -f'"
+echo -e "   View Nginx logs: ssh $EC2_USER@$EC2_HOST 'sudo tail -f /var/log/nginx/access.log'"
+echo ""
+echo -e "${YELLOW}⚠️  Important:${NC}"
+echo -e "   1. Edit the .env file with your actual configuration values"
+echo -e "   2. Configure your security groups to allow HTTP/HTTPS traffic"
+echo -e "   3. Set up SSL certificates for production use"
+echo -e "   4. Configure your domain name to point to the EC2 instance"
+echo ""
+echo -e "${GREEN}🚀 Your Design Analysis System is now running!${NC}"

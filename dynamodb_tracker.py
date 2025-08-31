@@ -376,6 +376,43 @@ class DynamoDBTracker:
             logger.error(f"❌ Failed to update result data: {e}")
             return False
 
+    def update_overall_status(self, request_id: str, status: str) -> bool:
+        """Update the overall status of an analysis request"""
+        try:
+            logger.info(f"🔄 Updating overall status: {request_id} - {status}")
+
+            timestamp = datetime.now(timezone.utc).isoformat()
+
+            # Update overall status and timestamp
+            update_expression = "SET #overall_status = :status, #updated_at = :timestamp"
+
+            expression_attribute_names = {
+                '#overall_status': 'overall_status',
+                '#updated_at': 'updated_at'
+            }
+
+            expression_attribute_values = {
+                ':status': {'S': status},
+                ':timestamp': {'S': timestamp}
+            }
+
+            # Update item
+            self.dynamodb.update_item(
+                TableName=self.table_name,
+                Key={'request_id': {'S': request_id}},
+                UpdateExpression=update_expression,
+                ExpressionAttributeNames=expression_attribute_names,
+                ExpressionAttributeValues=expression_attribute_values
+            )
+
+            logger.info(
+                f"✅ Overall status updated successfully: {request_id} - {status}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Failed to update overall status: {e}")
+            return False
+
     def get_analysis_status(self, request_id: str) -> Optional[Dict[str, Any]]:
         """Get the current status of an analysis request"""
         try:

@@ -515,9 +515,6 @@ async def analyze_research_data(request: AnalysisRequest):
         )
 
     try:
-        import time
-        start_time = time.time()
-
         # Get research data from appropriate source
         research_data = None
         if request.research_data:
@@ -593,10 +590,6 @@ async def analyze_research_data(request: AnalysisRequest):
         logger.info(
             f"📊 Final research data length for analysis: {len(research_data)} characters")
 
-        # Run analysis based on implementation choice
-        logger.info(
-            f"🔍 Starting analysis with implementation: {request.implementation}")
-
         # Prepare S3 path for DynamoDB tracking
         research_data_s3_path = None
         if request.s3_file_path:
@@ -605,15 +598,74 @@ async def analyze_research_data(request: AnalysisRequest):
             # If using S3 storage but no S3 path provided, create one
             research_data_s3_path = f"{S3_PREFIX}/research-data/{request_id}.txt"
 
-        if request.implementation == "openai":
+        # Create initial DynamoDB entry for tracking
+        if tracker:
+            try:
+                tracker.create_analysis_request(
+                    request_id, research_data_s3_path, request.implementation)
+                logger.info(
+                    f"✅ Created DynamoDB tracking entry for request {request_id}")
+            except Exception as e:
+                logger.error(
+                    f"❌ Failed to create DynamoDB tracking entry: {e}")
+
+        # Start analysis asynchronously
+        logger.info(
+            f"🚀 Starting asynchronous analysis for request {request_id}")
+
+        # Use asyncio.create_task to run analysis in background
+        import asyncio
+        asyncio.create_task(
+            run_analysis_async(
+                request_id,
+                research_data,
+                request.implementation,
+                research_data_s3_path,
+                request.include_metadata
+            )
+        )
+
+        # Return immediately with request ID
+        logger.info(
+            f"✅ Analysis triggered successfully for request {request_id}")
+        return {
+            "request_id": request_id,
+            "status": "started",
+            "message": "Analysis has been started. Use the request_id to monitor progress.",
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(
+            f"❌ Failed to start analysis for request {request_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to start analysis: {str(e)}"
+        )
+
+
+async def run_analysis_async(request_id: str, research_data: str, implementation: str, research_data_s3_path: str, include_metadata: bool):
+    """Run analysis asynchronously in the background"""
+
+    logger.info(f"🔄 Starting background analysis for request {request_id}")
+
+    try:
+        import time
+        start_time = time.time()
+
+        # Run analysis based on implementation choice
+        logger.info(
+            f"🔍 Running analysis with implementation: {implementation}")
+
+        if implementation == "openai":
             logger.info(
                 f"🤖 Running OpenAI agentic analysis for request {request_id}")
             result = run_openai_agentic_analysis(research_data)
-        elif request.implementation == "hybrid":
+        elif implementation == "hybrid":
             logger.info(
                 f"🔄 Running hybrid agentic analysis for request {request_id}")
             result = run_hybrid_agentic_analysis(
-                research_data, request_id, research_data_s3_path, save_to_s3=False)
+                research_data, request_id, research_data_s3_path, save_to_s3=True)
         else:  # langchain
             logger.info(
                 f"🔗 Running LangChain agentic analysis for request {request_id}")
@@ -628,7 +680,7 @@ async def analyze_research_data(request: AnalysisRequest):
         response = AnalysisResponse(
             request_id=request_id,
             status="completed",
-            implementation=request.implementation,
+            implementation=implementation,
             timestamp=datetime.now().isoformat(),
             chunks=result.get("chunks", []),
             inferences=result.get("inferences", []),
@@ -636,7 +688,7 @@ async def analyze_research_data(request: AnalysisRequest):
             insights=result.get("insights", []),
             design_principles=result.get("design_principles", []),
             metadata=result.get(
-                "analysis_metadata") if request.include_metadata else None,
+                "analysis_metadata") if include_metadata else None,
             execution_time=execution_time
         )
 
@@ -648,7 +700,7 @@ async def analyze_research_data(request: AnalysisRequest):
                 f"✅ Analysis result stored successfully for request {request_id}")
 
             # Update DynamoDB with the result S3 path if using hybrid implementation
-            if request.implementation == "hybrid" and tracker and request_id:
+            if implementation == "hybrid" and tracker and request_id:
                 try:
                     # Get the actual S3 path where the result was stored using storage system
                     result_s3_path = storage._get_object_key(
@@ -666,15 +718,24 @@ async def analyze_research_data(request: AnalysisRequest):
                 f"⚠️ Failed to store analysis result for request {request_id}")
 
         logger.info(f"🎉 Analysis request {request_id} completed successfully")
-        return response
 
     except Exception as e:
         logger.error(f"❌ Analysis failed for request {request_id}: {str(e)}")
+
+        # Update DynamoDB status to failed
+        if tracker:
+            try:
+                tracker.update_overall_status(request_id, "failed")
+                logger.info(
+                    f"✅ Updated DynamoDB status to failed for request {request_id}")
+            except Exception as db_error:
+                logger.error(f"❌ Failed to update DynamoDB status: {db_error}")
+
         # Store error result
         error_response = AnalysisResponse(
             request_id=request_id,
             status="error",
-            implementation=request.implementation,
+            implementation=implementation,
             timestamp=datetime.now().isoformat(),
             chunks=[],
             inferences=[],
@@ -687,11 +748,6 @@ async def analyze_research_data(request: AnalysisRequest):
 
         logger.info(f"💾 Storing error result for request {request_id}")
         storage.save_analysis(request_id, error_response.dict())
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Analysis failed: {str(e)}"
-        )
 
 
 @app.get("/analyze/{request_id}", response_model=AnalysisResponse)

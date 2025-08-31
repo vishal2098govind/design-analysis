@@ -1,0 +1,879 @@
+#!/usr/bin/env python3
+"""
+Design Analysis System - Streamlit Frontend
+Real-time step-by-step analysis with individual tabs for each step
+"""
+
+import streamlit as st
+import requests
+import time
+import json
+import os
+import pandas as pd
+from datetime import datetime
+from dotenv import load_dotenv
+import boto3
+from botocore.exceptions import ClientError, NoCredentialsError
+
+# Load environment variables
+load_dotenv()
+
+# Configuration - Using same environment variables as API
+API_BASE_URL = os.getenv(
+    'API_BASE_URL', f"http://{os.getenv('API_HOST', 'localhost')}:{os.getenv('API_PORT', '8000')}")
+DYNAMODB_TABLE_NAME = os.getenv(
+    'DYNAMODB_TABLE_NAME', 'design-analysis-tracking')
+AWS_REGION = os.getenv('AWS_REGION', os.getenv('S3_REGION', 'us-east-1'))
+STORAGE_TYPE = os.getenv('STORAGE_TYPE', 'local')
+S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME', '')
+S3_PREFIX = os.getenv('S3_PREFIX', 'design-analysis')
+DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
+
+# Analysis steps in order
+ANALYSIS_STEPS = [
+    'chunking',
+    'inferring',
+    'relating',
+    'explaining',
+    'activating'
+]
+
+
+def main():
+    """Main Streamlit application"""
+
+    st.set_page_config(
+        page_title="Design Analysis System",
+        page_icon="🔍",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+
+    # Custom CSS for better styling
+    st.markdown("""
+    <style>
+    .main-header {
+        color: #1f77b4;
+        font-size: 2.5rem;
+        font-weight: bold;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+    .sub-header {
+        color: #2c3e50;
+        font-size: 1.5rem;
+        font-weight: bold;
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+    }
+    .step-tab {
+        background-color: #f8f9fa;
+        border-radius: 10px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+    }
+    .status-completed {
+        color: #28a745;
+        font-weight: bold;
+    }
+    .status-processing {
+        color: #ffc107;
+        font-weight: bold;
+    }
+    .status-failed {
+        color: #dc3545;
+        font-weight: bold;
+    }
+    .status-pending {
+        color: #6c757d;
+        font-weight: bold;
+    }
+    .upload-area {
+        border: 2px dashed #ccc;
+        border-radius: 10px;
+        padding: 2rem;
+        text-align: center;
+        background-color: #f8f9fa;
+    }
+    .result-card {
+        background-color: #ffffff;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Header
+    st.markdown('<h1 class="main-header">🔍 Design Analysis System</h1>',
+                unsafe_allow_html=True)
+    st.markdown(
+        "Transform research data into actionable design principles using AI-powered analysis")
+
+    # Sidebar navigation
+    st.sidebar.title("Navigation")
+    page = st.sidebar.selectbox(
+        "Choose a page:",
+        ["🚀 New Analysis", "📊 Analysis History", "⚙️ Settings"]
+    )
+
+    if page == "🚀 New Analysis":
+        show_new_analysis()
+    elif page == "📊 Analysis History":
+        show_analysis_history()
+    elif page == "⚙️ Settings":
+        show_settings()
+
+
+def show_new_analysis():
+    """Show the new analysis form with real-time step monitoring"""
+
+    st.markdown('<h2 class="sub-header">🚀 New Analysis</h2>',
+                unsafe_allow_html=True)
+
+    # Analysis configuration
+    st.markdown("### Configuration")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        implementation = st.selectbox(
+            "AI Implementation:",
+            ["hybrid", "openai_agentic", "langchain_agentic"],
+            help="Choose the AI implementation to use for analysis"
+        )
+
+    with col2:
+        include_metadata = st.checkbox(
+            "Include Metadata",
+            value=True,
+            help="Include detailed metadata in the response"
+        )
+
+    # Research data input
+    st.markdown("### Research Data")
+
+    input_method = st.radio(
+        "Choose input method:",
+        ["📁 File Upload", "📝 Direct Text Input", "🔗 S3 Path"]
+    )
+
+    research_data = None
+    s3_file_path = None
+
+    if input_method == "📁 File Upload":
+        uploaded_file = st.file_uploader(
+            "Upload Research Data File:",
+            type=['txt', 'json', 'csv', 'md'],
+            help="Upload a file containing your research data"
+        )
+
+        if uploaded_file is not None:
+            research_data = uploaded_file.getvalue().decode('utf-8')
+            st.success(f"✅ File uploaded: {uploaded_file.name}")
+
+    elif input_method == "📝 Direct Text Input":
+        research_data = st.text_area(
+            "Research Data:",
+            height=200,
+            placeholder="Paste your interview transcripts, observations, or research notes here..."
+        )
+
+    elif input_method == "🔗 S3 Path":
+        s3_file_path = st.text_input(
+            "S3 File Path:",
+            placeholder="s3://bucket-name/path/to/research-data.json",
+            help="Enter the S3 path to your research data file"
+        )
+
+        if s3_file_path:
+            st.info(f"📁 Using S3 path: {s3_file_path}")
+
+    # Submit analysis
+    st.markdown("### Submit Analysis")
+
+    if st.button("🚀 Start Analysis", type="primary", disabled=not (research_data or s3_file_path)):
+        if research_data or s3_file_path:
+            with st.spinner("Starting analysis..."):
+                result = submit_analysis(
+                    research_data, s3_file_path, implementation, include_metadata)
+
+                if result:
+                    st.success("✅ Analysis started successfully!")
+
+                    # Get request ID from the new response format
+                    request_id = result.get('request_id')
+                    status = result.get('status', 'unknown')
+                    message = result.get('message', '')
+
+                    if request_id:
+                        st.info(f"📋 Request ID: `{request_id}`")
+                        st.info(f"📊 Status: {status}")
+                        st.info(f"💬 Message: {message}")
+
+                        st.session_state['current_analysis_id'] = request_id
+                        st.session_state['analysis_started'] = True
+
+                        # Start real-time monitoring
+                        st.markdown("### 📊 Real-Time Analysis Progress")
+                        monitor_analysis_progress(request_id)
+                    else:
+                        st.error("❌ No request ID received from API")
+                else:
+                    st.error("❌ Failed to start analysis. Please check the logs.")
+
+
+def monitor_analysis_progress(request_id):
+    """Monitor analysis progress in real-time with individual step tabs"""
+
+    # Create tabs for each step
+    tab_names = [f"📝 {step.title()}" for step in ANALYSIS_STEPS]
+    tabs = st.tabs(tab_names)
+
+    # Progress bar for overall progress
+    progress_bar = st.progress(0)
+    overall_status_text = st.empty()
+
+    # Initialize session state for results
+    if 'analysis_results' not in st.session_state:
+        st.session_state.analysis_results = {}
+
+    # Monitoring loop
+    monitoring_placeholder = st.empty()
+
+    with monitoring_placeholder.container():
+        while True:
+            try:
+                # Get analysis status from DynamoDB
+                analysis = get_analysis_status(request_id)
+
+                if not analysis:
+                    st.error("❌ Analysis not found")
+                    break
+
+                overall_status = analysis.get('overall_status', 'pending')
+                steps_status = analysis.get(
+                    'analysis_result', {}).get('steps_status', {})
+
+                # Calculate overall progress
+                completed_steps = sum(1 for step in ANALYSIS_STEPS
+                                      if steps_status.get(step, {}).get('status') == 'completed')
+                progress = (completed_steps / len(ANALYSIS_STEPS)) * 100
+
+                # Update progress bar
+                progress_bar.progress(int(progress))
+
+                # Update overall status
+                status_emoji = {
+                    'completed': '✅',
+                    'processing': '🔄',
+                    'failed': '❌',
+                    'pending': '⏳'
+                }.get(overall_status, '❓')
+
+                overall_status_text.markdown(
+                    f"**Overall Status:** {status_emoji} {overall_status.title()} "
+                    f"({completed_steps}/{len(ANALYSIS_STEPS)} steps completed)"
+                )
+
+                # Update each step tab
+                for i, step_name in enumerate(ANALYSIS_STEPS):
+                    with tabs[i]:
+                        show_step_status(step_name, steps_status.get(
+                            step_name, {}), request_id)
+
+                # Check if analysis is complete
+                if overall_status == 'completed':
+                    st.success("🎉 Analysis completed successfully!")
+
+                    # Load and display final results
+                    result_data = analysis.get(
+                        'analysis_result', {}).get('result_data', '')
+                    if result_data:
+                        st.markdown("### 📄 Loading Final Results...")
+                        results = load_analysis_results(request_id)
+                        if results:
+                            st.session_state.analysis_results = results
+                            display_final_results(results, tabs)
+
+                    break
+                elif overall_status == 'failed':
+                    st.error("❌ Analysis failed")
+                    break
+
+                time.sleep(2)  # Check every 2 seconds
+
+            except Exception as e:
+                st.error(f"❌ Error monitoring progress: {str(e)}")
+                break
+
+
+def show_step_status(step_name, step_info, request_id):
+    """Show individual step status and details"""
+
+    status = step_info.get('status', 'pending')
+    message = step_info.get('message', '')
+    started_at = step_info.get('started_at', '')
+    completed_at = step_info.get('completed_at', '')
+
+    # Status styling
+    status_class = f"status-{status}"
+    status_emoji = {
+        'completed': '✅',
+        'processing': '🔄',
+        'failed': '❌',
+        'pending': '⏳'
+    }.get(status, '❓')
+
+    # Step header
+    st.markdown(f"### {status_emoji} {step_name.title()}")
+
+    # Status information
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown(
+            f"**Status:** <span class='{status_class}'>{status.title()}</span>", unsafe_allow_html=True)
+        if message:
+            st.markdown(f"**Message:** {message}")
+
+    with col2:
+        if started_at:
+            st.markdown(f"**Started:** {started_at}")
+        if completed_at:
+            st.markdown(f"**Completed:** {completed_at}")
+
+    # Show step-specific content
+    if status == 'completed':
+        # Show step results if available
+        if 'analysis_results' in st.session_state and st.session_state.analysis_results:
+            results = st.session_state.analysis_results
+            show_step_results(step_name, results)
+
+    elif status == 'processing':
+        # Show processing animation
+        with st.spinner(f"Processing {step_name}..."):
+            st.info(f"🔄 {step_name.title()} is currently being processed...")
+
+    elif status == 'failed':
+        # Show error information
+        st.error(f"❌ {step_name.title()} failed")
+        if message:
+            st.error(f"Error: {message}")
+
+    else:  # pending
+        st.info(f"⏳ {step_name.title()} is waiting to start...")
+
+
+def show_step_results(step_name, results):
+    """Show results for a specific step"""
+
+    if step_name == 'chunking' and 'chunks' in results:
+        st.markdown("#### 📝 Generated Chunks")
+        for i, chunk in enumerate(results['chunks'][:10]):  # Show first 10
+            with st.expander(f"Chunk {i+1}"):
+                st.write(f"**Content:** {chunk.get('content', '')[:200]}...")
+                if 'metadata' in chunk:
+                    st.json(chunk['metadata'])
+
+    elif step_name == 'inferring' and 'inferences' in results:
+        st.markdown("#### 🔍 Generated Inferences")
+        # Show first 10
+        for i, inference in enumerate(results['inferences'][:10]):
+            with st.expander(f"Inference {i+1}"):
+                st.write(f"**Meaning:** {inference.get('meaning', '')}")
+                st.write(f"**Chunk ID:** {inference.get('chunk_id', '')}")
+                if 'confidence' in inference:
+                    st.write(
+                        f"**Confidence:** {inference.get('confidence', '')}")
+
+    elif step_name == 'relating' and 'patterns' in results:
+        st.markdown("#### 🔗 Identified Patterns")
+        for i, pattern in enumerate(results['patterns'][:10]):  # Show first 10
+            with st.expander(f"Pattern {i+1}"):
+                st.write(f"**Pattern:** {pattern.get('pattern', '')}")
+                st.write(f"**Description:** {pattern.get('description', '')}")
+                if 'frequency' in pattern:
+                    st.write(f"**Frequency:** {pattern.get('frequency', '')}")
+
+    elif step_name == 'explaining' and 'insights' in results:
+        st.markdown("#### 💡 Generated Insights")
+        for i, insight in enumerate(results['insights'][:10]):  # Show first 10
+            with st.expander(f"Insight {i+1}"):
+                st.write(f"**Insight:** {insight.get('insight', '')}")
+                st.write(
+                    f"**Impact Score:** {insight.get('impact_score', '')}")
+                if 'evidence' in insight:
+                    st.write(f"**Evidence:** {insight.get('evidence', '')}")
+
+    elif step_name == 'activating' and 'design_principles' in results:
+        st.markdown("#### 🎯 Design Principles")
+        # Show first 10
+        for i, principle in enumerate(results['design_principles'][:10]):
+            with st.expander(f"Principle {i+1}"):
+                st.write(f"**Principle:** {principle.get('principle', '')}")
+                st.write(
+                    f"**Action Verbs:** {', '.join(principle.get('action_verbs', []))}")
+                st.write(
+                    f"**Design Direction:** {principle.get('design_direction', '')}")
+                if 'priority' in principle:
+                    st.write(f"**Priority:** {principle.get('priority', '')}")
+
+
+def display_final_results(results, tabs):
+    """Display final results in the appropriate tabs"""
+
+    # Update each tab with final results
+    for i, step_name in enumerate(ANALYSIS_STEPS):
+        with tabs[i]:
+            show_step_results(step_name, results)
+
+
+def show_analysis_history():
+    """Show analysis history and details"""
+
+    st.markdown('<h2 class="sub-header">📊 Analysis History</h2>',
+                unsafe_allow_html=True)
+
+    # Filter options
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        status_filter = st.selectbox(
+            "Filter by Status:",
+            ["All", "completed", "processing", "failed", "pending"]
+        )
+
+    with col2:
+        date_filter = st.date_input(
+            "From Date:",
+            help="Show analyses from this date onwards"
+        )
+
+    with col3:
+        search_term = st.text_input(
+            "Search Request ID:",
+            placeholder="Enter request ID to search"
+        )
+
+    # Get analyses
+    analyses = get_analysis_history(status_filter, date_filter, search_term)
+
+    if analyses:
+        st.markdown(f"### Found {len(analyses)} analyses")
+
+        # Display as table
+        df = pd.DataFrame(analyses)
+        df['created_at'] = pd.to_datetime(df['created_at'])
+        df['updated_at'] = pd.to_datetime(df['updated_at'])
+
+        display_df = df[['request_id', 'overall_status',
+                         'created_at', 'updated_at']].copy()
+        display_df.columns = ['Request ID', 'Status', 'Created', 'Updated']
+
+        st.dataframe(display_df, use_container_width=True)
+
+        # Show details for selected analysis
+        selected_id = st.selectbox(
+            "Select Analysis to View Details:",
+            df['request_id'].tolist()
+        )
+
+        if selected_id:
+            show_analysis_details(selected_id)
+    else:
+        st.info("No analyses found matching the criteria.")
+
+
+def show_analysis_details(request_id):
+    """Show detailed analysis results"""
+
+    st.markdown(
+        f'<h3 class="sub-header">📊 Analysis Details: {request_id}</h3>', unsafe_allow_html=True)
+
+    # Get analysis details
+    analysis = get_analysis_details(request_id)
+
+    if not analysis:
+        st.error(f"❌ Analysis {request_id} not found")
+        return
+
+    # Basic info
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric("Status", analysis.get('overall_status', 'unknown'))
+
+    with col2:
+        st.metric("Created", analysis.get('created_at', 'unknown'))
+
+    with col3:
+        st.metric("Updated", analysis.get('updated_at', 'unknown'))
+
+    # Research data info
+    st.markdown("### 📁 Research Data")
+    research_data = analysis.get('research_data', '')
+    st.text(f"S3 Path: {research_data}")
+
+    # Step status
+    st.markdown("### 🔄 Analysis Steps")
+
+    steps_status = analysis.get('analysis_result', {}).get('steps_status', {})
+
+    for step_name in ANALYSIS_STEPS:
+        step_info = steps_status.get(step_name, {})
+        status = step_info.get('status', 'unknown')
+        message = step_info.get('message', '')
+        started_at = step_info.get('started_at', '')
+        completed_at = step_info.get('completed_at', '')
+
+        col1, col2, col3 = st.columns([1, 2, 2])
+
+        with col1:
+            status_emoji = {
+                'completed': '✅',
+                'processing': '🔄',
+                'failed': '❌',
+                'pending': '⏳'
+            }.get(status, '❓')
+            st.write(f"{status_emoji} {step_name.title()}")
+
+        with col2:
+            st.write(f"**Status:** {status}")
+            st.write(f"**Message:** {message}")
+
+        with col3:
+            if started_at:
+                st.write(f"**Started:** {started_at}")
+            if completed_at:
+                st.write(f"**Completed:** {completed_at}")
+
+        st.divider()
+
+    # Results
+    result_data = analysis.get('analysis_result', {}).get('result_data', '')
+    if result_data:
+        st.markdown("### 📄 Analysis Results")
+        st.text(f"S3 Path: {result_data}")
+
+        # Try to load and display results
+        if st.button("📥 Load Results"):
+            with st.spinner("Loading results from S3..."):
+                results = load_analysis_results(request_id)
+                if results:
+                    display_analysis_results(results)
+                else:
+                    st.error("❌ Failed to load results from S3")
+
+
+def show_settings():
+    """Show application settings"""
+
+    st.markdown('<h2 class="sub-header">⚙️ Settings</h2>',
+                unsafe_allow_html=True)
+
+    # Environment Configuration
+    st.markdown("### 🌍 Environment Configuration")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.write("**Storage Type:**", STORAGE_TYPE)
+        st.write("**AWS Region:**", AWS_REGION)
+        st.write("**Debug Mode:**", "Enabled" if DEBUG else "Disabled")
+
+    with col2:
+        st.write("**S3 Bucket:**", S3_BUCKET_NAME or "Not configured")
+        st.write("**S3 Prefix:**", S3_PREFIX)
+        st.write("**DynamoDB Table:**", DYNAMODB_TABLE_NAME)
+
+    # API Configuration
+    st.markdown("### 🔌 API Configuration")
+
+    api_url = st.text_input(
+        "API Base URL:",
+        value=API_BASE_URL,
+        help="Base URL for the Design Analysis API"
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("Test API Connection"):
+            if check_api_status(api_url):
+                st.success("✅ API connection successful!")
+            else:
+                st.error("❌ API connection failed")
+
+    with col2:
+        if st.button("Test DynamoDB Connection"):
+            if check_dynamodb_status():
+                st.success("✅ DynamoDB connection successful!")
+            else:
+                st.error("❌ DynamoDB connection failed")
+
+    # Storage Configuration
+    st.markdown("### 💾 Storage Configuration")
+
+    if STORAGE_TYPE == "s3":
+        st.info("📁 Using S3 Storage")
+        st.write(f"**Bucket:** {S3_BUCKET_NAME}")
+        st.write(f"**Region:** {AWS_REGION}")
+        st.write(f"**Prefix:** {S3_PREFIX}")
+
+        if st.button("Test S3 Connection"):
+            if check_s3_connection():
+                st.success("✅ S3 connection successful!")
+            else:
+                st.error("❌ S3 connection failed")
+    else:
+        st.info("📁 Using Local Storage")
+        st.write("Analysis results will be stored locally")
+
+    # System Information
+    st.markdown("### 💻 System Information")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.write("**Python Version:**", os.sys.version)
+        st.write("**Streamlit Version:**", st.__version__)
+        st.write("**Environment:**", "Development" if DEBUG else "Production")
+
+    with col2:
+        st.write("**API Base URL:**", API_BASE_URL)
+        st.write("**Storage Type:**", STORAGE_TYPE)
+        st.write("**AWS Region:**", AWS_REGION)
+
+    # Environment Variables (Debug Mode)
+    if DEBUG:
+        st.markdown("### 🔍 Environment Variables (Debug)")
+
+        env_vars = {
+            "API_HOST": os.getenv('API_HOST', 'Not set'),
+            "API_PORT": os.getenv('API_PORT', 'Not set'),
+            "STORAGE_TYPE": os.getenv('STORAGE_TYPE', 'Not set'),
+            "S3_BUCKET_NAME": os.getenv('S3_BUCKET_NAME', 'Not set'),
+            "S3_REGION": os.getenv('S3_REGION', 'Not set'),
+            "S3_PREFIX": os.getenv('S3_PREFIX', 'Not set'),
+            "DYNAMODB_TABLE_NAME": os.getenv('DYNAMODB_TABLE_NAME', 'Not set'),
+            "DYNAMODB_REGION": os.getenv('DYNAMODB_REGION', 'Not set'),
+            "AWS_REGION": os.getenv('AWS_REGION', 'Not set'),
+            "DEBUG": os.getenv('DEBUG', 'Not set'),
+            "OPENAI_API_KEY": "***" if os.getenv('OPENAI_API_KEY') else "Not set",
+            "OPENAI_MODEL": os.getenv('OPENAI_MODEL', 'Not set'),
+            "TEMPERATURE": os.getenv('TEMPERATURE', 'Not set'),
+        }
+
+        for key, value in env_vars.items():
+            st.write(f"**{key}:** {value}")
+
+# Helper functions
+
+
+def check_api_status(url=None):
+    """Check if API is accessible"""
+    try:
+        response = requests.get(f"{url or API_BASE_URL}/health", timeout=5)
+        return response.status_code == 200
+    except:
+        return False
+
+
+def check_dynamodb_status(table_name=None):
+    """Check if DynamoDB is accessible"""
+    try:
+        from dynamodb_tracker import create_dynamodb_tracker
+        tracker = create_dynamodb_tracker()
+        tracker.get_table_info()
+        return True
+    except:
+        return False
+
+
+def check_s3_connection():
+    """Check if S3 is accessible"""
+    try:
+        from s3_storage import create_s3_storage
+        storage = create_s3_storage()
+        storage.get_bucket_info()
+        return True
+    except:
+        return False
+
+
+def get_analysis_status(request_id):
+    """Get analysis status from DynamoDB"""
+    try:
+        from dynamodb_tracker import create_dynamodb_tracker
+        tracker = create_dynamodb_tracker()
+        return tracker.get_analysis_status(request_id)
+    except Exception as e:
+        st.error(f"Error getting analysis status: {e}")
+        return None
+
+
+def get_analysis_history(status_filter="All", date_filter=None, search_term=None):
+    """Get analysis history with filters"""
+    try:
+        from dynamodb_tracker import create_dynamodb_tracker
+        tracker = create_dynamodb_tracker()
+        analyses = tracker.list_analysis_requests(limit=1000)
+
+        # Apply filters
+        if status_filter != "All":
+            analyses = [a for a in analyses if a.get(
+                'overall_status') == status_filter]
+
+        if date_filter:
+            date_str = date_filter.strftime('%Y-%m-%d')
+            analyses = [a for a in analyses if a.get(
+                'created_at', '').startswith(date_str)]
+
+        if search_term:
+            analyses = [a for a in analyses if search_term.lower()
+                        in a.get('request_id', '').lower()]
+
+        return analyses
+    except Exception as e:
+        st.error(f"Error getting analysis history: {e}")
+        return []
+
+
+def get_analysis_details(request_id):
+    """Get detailed analysis information"""
+    try:
+        from dynamodb_tracker import create_dynamodb_tracker
+        tracker = create_dynamodb_tracker()
+        return tracker.get_analysis_status(request_id)
+    except Exception as e:
+        st.error(f"Error getting analysis details: {e}")
+        return None
+
+
+def submit_analysis(research_data, s3_file_path, implementation, include_metadata):
+    """Submit a new analysis request"""
+    try:
+        url = f"{API_BASE_URL}/analyze"
+
+        payload = {
+            "implementation": implementation,
+            "include_metadata": include_metadata
+        }
+
+        if research_data:
+            payload["research_data"] = research_data
+        elif s3_file_path:
+            payload["s3_file_path"] = s3_file_path
+
+        response = requests.post(url, json=payload, timeout=30)
+
+        if response.status_code == 200:
+            return response.json()
+        else:
+            st.error(f"API Error: {response.status_code} - {response.text}")
+            return None
+    except Exception as e:
+        st.error(f"Error submitting analysis: {e}")
+        return None
+
+
+def load_analysis_results(request_id):
+    """Load analysis results from S3"""
+    try:
+        from s3_storage import create_s3_storage
+        storage = create_s3_storage()
+        results = storage.load_analysis_result(request_id)
+        return results
+    except Exception as e:
+        st.error(f"Error loading results: {e}")
+        return None
+
+
+def display_analysis_results(results):
+    """Display analysis results in a formatted way"""
+
+    st.markdown("### 📊 Analysis Results")
+
+    # Create tabs for different result types
+    result_tabs = st.tabs(["📝 Chunks", "🔍 Inferences",
+                          "🔗 Patterns", "💡 Insights", "🎯 Design Principles"])
+
+    # Chunks tab
+    with result_tabs[0]:
+        if 'chunks' in results and results['chunks']:
+            for i, chunk in enumerate(results['chunks'][:10]):  # Show first 10
+                with st.expander(f"Chunk {i+1}"):
+                    st.write(f"**Content:** {chunk.get('content', '')}")
+                    if 'metadata' in chunk:
+                        st.json(chunk['metadata'])
+        else:
+            st.info("No chunks available")
+
+    # Inferences tab
+    with result_tabs[1]:
+        if 'inferences' in results and results['inferences']:
+            # Show first 10
+            for i, inference in enumerate(results['inferences'][:10]):
+                with st.expander(f"Inference {i+1}"):
+                    st.write(f"**Meaning:** {inference.get('meaning', '')}")
+                    st.write(f"**Chunk ID:** {inference.get('chunk_id', '')}")
+                    if 'confidence' in inference:
+                        st.write(
+                            f"**Confidence:** {inference.get('confidence', '')}")
+        else:
+            st.info("No inferences available")
+
+    # Patterns tab
+    with result_tabs[2]:
+        if 'patterns' in results and results['patterns']:
+            # Show first 10
+            for i, pattern in enumerate(results['patterns'][:10]):
+                with st.expander(f"Pattern {i+1}"):
+                    st.write(f"**Pattern:** {pattern.get('pattern', '')}")
+                    st.write(
+                        f"**Description:** {pattern.get('description', '')}")
+                    if 'frequency' in pattern:
+                        st.write(
+                            f"**Frequency:** {pattern.get('frequency', '')}")
+        else:
+            st.info("No patterns available")
+
+    # Insights tab
+    with result_tabs[3]:
+        if 'insights' in results and results['insights']:
+            # Show first 10
+            for i, insight in enumerate(results['insights'][:10]):
+                with st.expander(f"Insight {i+1}"):
+                    st.write(f"**Insight:** {insight.get('insight', '')}")
+                    st.write(
+                        f"**Impact Score:** {insight.get('impact_score', '')}")
+                    if 'evidence' in insight:
+                        st.write(
+                            f"**Evidence:** {insight.get('evidence', '')}")
+        else:
+            st.info("No insights available")
+
+    # Design Principles tab
+    with result_tabs[4]:
+        if 'design_principles' in results and results['design_principles']:
+            # Show first 10
+            for i, principle in enumerate(results['design_principles'][:10]):
+                with st.expander(f"Principle {i+1}"):
+                    st.write(
+                        f"**Principle:** {principle.get('principle', '')}")
+                    st.write(
+                        f"**Action Verbs:** {', '.join(principle.get('action_verbs', []))}")
+                    st.write(
+                        f"**Design Direction:** {principle.get('design_direction', '')}")
+                    if 'priority' in principle:
+                        st.write(
+                            f"**Priority:** {principle.get('priority', '')}")
+        else:
+            st.info("No design principles available")
+
+
+if __name__ == "__main__":
+    main()
