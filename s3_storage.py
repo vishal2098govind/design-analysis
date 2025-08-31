@@ -308,6 +308,7 @@ class S3Storage:
                     return result
 
                 except ClientError as e:
+                    logger.error(f"Failed to load analysis {request_id}: {e}")
                     if e.response['Error']['Code'] == 'NoSuchKey':
                         continue
                     else:
