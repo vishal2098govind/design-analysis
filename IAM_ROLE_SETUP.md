@@ -65,6 +65,23 @@ This guide shows you how to set up IAM roles for your EC2 instances to access S3
             "Resource": "arn:aws:s3:::design-analysis-*"
         },
         {
+            "Sid": "DesignAnalysisDynamoDBAccess",
+            "Effect": "Allow",
+            "Action": [
+                "dynamodb:CreateTable",
+                "dynamodb:PutItem",
+                "dynamodb:GetItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:Scan",
+                "dynamodb:DescribeTable"
+            ],
+            "Resource": [
+                "arn:aws:dynamodb:*:*:table/design-analysis-tracking",
+                "arn:aws:dynamodb:*:*:table/design-analysis-tracking/*"
+            ]
+        },
+        {
             "Sid": "DesignAnalysisCloudWatchLogs",
             "Effect": "Allow",
             "Action": [

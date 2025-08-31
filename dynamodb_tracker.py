@@ -133,12 +133,15 @@ class DynamoDBTracker:
                         'AttributeType': 'S'
                     }
                 ],
-                'BillingMode': 'PAY_PER_REQUEST',  # On-demand billing
-                'SSESpecification': {
-                    'Enabled': True,
-                    'SSEType': 'AES256'
-                }
+                'BillingMode': 'PAY_PER_REQUEST'  # On-demand billing
             }
+
+            # Add encryption if supported (DynamoDB uses default encryption by default)
+            # Only add explicit encryption if needed for compliance
+            # table_params['SSESpecification'] = {
+            #     'Enabled': True,
+            #     'SSEType': 'AES256'  # or 'KMS' for customer-managed keys
+            # }
 
             # Add tags for better organization
             table_params['Tags'] = [

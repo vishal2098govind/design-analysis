@@ -237,6 +237,10 @@ tail -f dynamodb_tracker.log
 **Cause:** Insufficient IAM permissions
 **Solution:** Add DynamoDB permissions to your IAM role
 
+#### **4. "SSEType AES256 is not supported"**
+**Cause:** AES256 encryption not supported in your region/account
+**Solution:** The system now uses default DynamoDB encryption (no explicit configuration needed)
+
 ## 🎯 Use Cases
 
 ### **1. Real-Time Progress Monitoring**
