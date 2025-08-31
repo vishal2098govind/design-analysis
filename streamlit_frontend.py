@@ -133,25 +133,8 @@ def show_new_analysis():
 
     st.markdown('<h2 class="sub-header">🚀 New Analysis</h2>',
                 unsafe_allow_html=True)
-
-    # Analysis configuration
-    st.markdown("### Configuration")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        implementation = st.selectbox(
-            "AI Implementation:",
-            ["hybrid", "openai_agentic", "langchain_agentic"],
-            help="Choose the AI implementation to use for analysis"
-        )
-
-    with col2:
-        include_metadata = st.checkbox(
-            "Include Metadata",
-            value=True,
-            help="Include detailed metadata in the response"
-        )
+    implementation = "hybrid"
+    include_metadata = True
 
     # Research data input
     st.markdown("### Research Data")
@@ -207,12 +190,12 @@ def show_new_analysis():
                     del st.session_state['uploaded_s3_path']
                     st.rerun()
 
-    elif input_method == "📝 Direct Text Input":
-        research_data = st.text_area(
-            "Research Data:",
-            height=200,
-            placeholder="Paste your interview transcripts, observations, or research notes here..."
-        )
+    # elif input_method == "📝 Direct Text Input":
+    #     research_data = st.text_area(
+    #         "Research Data:",
+    #         height=200,
+    #         placeholder="Paste your interview transcripts, observations, or research notes here..."
+    #     )
 
     elif input_method == "🔗 S3 Path":
         s3_file_path = st.text_input(
@@ -242,21 +225,15 @@ def show_new_analysis():
                     research_data, analysis_s3_path, implementation, include_metadata)
 
                 if result:
-                    st.success("✅ Analysis started successfully!")
+                    import time
+                    msg = st.success("✅ Analysis started successfully!")
+                    time.sleep(2)
+                    msg.empty()
 
                     # Get request ID from the new response format
                     request_id = result.get('request_id')
-                    status = result.get('status', 'unknown')
-                    message = result.get('message', '')
 
                     if request_id:
-                        st.info(f"📋 Request ID: `{request_id}`")
-                        st.info(f"📊 Status: {status}")
-                        st.info(f"💬 Message: {message}")
-
-                        st.session_state['current_analysis_id'] = request_id
-                        st.session_state['analysis_started'] = True
-
                         # Start real-time monitoring
                         st.markdown("### 📊 Real-Time Analysis Progress")
                         monitor_analysis_progress(request_id)
@@ -269,15 +246,10 @@ def show_new_analysis():
 def monitor_analysis_progress(request_id):
     """Monitor analysis progress in real-time with detailed step information"""
 
-    st.markdown(
-        f'<h3 class="sub-header">📊 Real-Time Analysis Progress: {request_id}</h3>', unsafe_allow_html=True)
-
     # Create placeholder for progress bar
     progress_bar = st.progress(0)
     overall_status_text = st.empty()
 
-    # Placeholder for status metric
-    status_metric = st.empty()
     # Placeholder for results section
     results_section = st.empty()
 
@@ -319,55 +291,9 @@ def monitor_analysis_progress(request_id):
                 f"**Overall Status:** {status_emoji} {overall_status.title()} "
                 f"({completed_steps}/{len(ANALYSIS_STEPS)} steps completed)"
             )
-
-            # Update metrics in a compact grid layout
-            with status_metric.container():
-                # Create a 3-column grid for basic metrics
-                col1, col2, col3 = st.columns(3)
-
-                with col1:
-                    st.metric("Status", analysis.get(
-                        'overall_status', 'unknown'))
-
-                with col2:
-                    created_at = analysis.get('created_at', 'unknown')
-                    if created_at != 'unknown':
-                        try:
-                            parsed_date = pd.to_datetime(
-                                created_at, errors='coerce')
-                            if not pd.isna(parsed_date):
-                                formatted_date = parsed_date.strftime(
-                                    '%Y-%m-%d %H:%M:%S')
-                                st.metric("Created", formatted_date)
-                            else:
-                                st.metric("Created", created_at)
-                        except:
-                            st.metric("Created", created_at)
-                    else:
-                        st.metric("Created", created_at)
-
-                with col3:
-                    updated_at = analysis.get('updated_at', 'unknown')
-                    if updated_at != 'unknown':
-                        try:
-                            parsed_date = pd.to_datetime(
-                                updated_at, errors='coerce')
-                            if not pd.isna(parsed_date):
-                                formatted_date = parsed_date.strftime(
-                                    '%Y-%m-%d %H:%M:%S')
-                                st.metric("Updated", formatted_date)
-                            else:
-                                st.metric("Updated", updated_at)
-                        except:
-                            st.metric("Updated", updated_at)
-                    else:
-                        st.metric("Updated", updated_at)
-
             # Check if analysis is complete
             with results_section.container():
                 if overall_status == 'completed':
-                    st.success("🎉 Analysis completed successfully!")
-                    st.markdown("### 📄 Final Analysis Results")
                     with st.spinner("Loading final results from S3..."):
                         results = load_analysis_results(request_id)
                         if results:
