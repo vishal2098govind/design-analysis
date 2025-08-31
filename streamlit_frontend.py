@@ -214,11 +214,11 @@ def show_new_analysis():
     has_research_data = bool(research_data)
     has_s3_file = bool(s3_file_path) or (
         'uploaded_s3_path' in st.session_state)
-
+    st.session_state['analysis_started'] = False
     # Get the actual S3 path for analysis
     analysis_s3_path = s3_file_path or st.session_state.get('uploaded_s3_path')
 
-    if st.button("🚀 Start Analysis", type="primary", disabled=not (has_research_data or has_s3_file)):
+    if st.button("🚀 Start Analysis", type="primary", disabled=not (has_research_data or has_s3_file) or st.session_state['analysis_started']):
         if has_research_data or has_s3_file:
             with st.spinner("Starting analysis..."):
                 result = submit_analysis(
@@ -236,6 +236,7 @@ def show_new_analysis():
                     if request_id:
                         # Start real-time monitoring
                         st.markdown("### 📊 Real-Time Analysis Progress")
+                        st.session_state['analysis_started'] = True
                         monitor_analysis_progress(request_id)
                     else:
                         st.error("❌ No request ID received from API")
@@ -294,6 +295,7 @@ def monitor_analysis_progress(request_id):
             # Check if analysis is complete
             with results_section.container():
                 if overall_status == 'completed':
+                    st.session_state['analysis_started'] = False
                     with st.spinner("Loading final results from S3..."):
                         results = load_analysis_results(request_id)
                         if results:
@@ -305,9 +307,11 @@ def monitor_analysis_progress(request_id):
                         # Exit the monitoring loop
                     return
                 elif overall_status == 'failed':
+                    st.session_state['analysis_started'] = False
                     st.error("❌ Analysis failed")
                     return
                 else:
+                    st.session_state['analysis_started'] = True
                     display_analysis_results(
                         results=None,
                         steps_status=steps_status,
