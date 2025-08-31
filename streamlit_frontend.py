@@ -141,7 +141,7 @@ def show_new_analysis():
 
     input_method = st.radio(
         "Choose input method:",
-        ["📁 File Upload", "📝 Direct Text Input", "🔗 S3 Path"]
+        ["📁 File Upload", "🔗 S3 Path"]
     )
 
     research_data = None
@@ -973,7 +973,7 @@ def display_analysis_results(results=None, steps_status=None, is_realtime=False)
             if pattern_status == 'completed':
                 if results and 'patterns' in results and results['patterns']:
                     for i, pattern in enumerate(results['patterns'][:10]):
-                        with st.expander(f"Pattern {i+1}"):
+                        with st.expander(f"Pattern: {pattern.get('name', f'{i+1}')}"):
                             st.write(f"**Name:** {pattern.get('name', '')}")
                             st.write(
                                 f"**Description:** {pattern.get('description', '')}")
@@ -1006,7 +1006,7 @@ def display_analysis_results(results=None, steps_status=None, is_realtime=False)
             # Final results display
             if results and 'patterns' in results and results['patterns']:
                 for i, pattern in enumerate(results['patterns'][:10]):
-                    with st.expander(f"Chunk {i+1}"):
+                    with st.expander(f"Pattern: {pattern.get('name', f'{i+1}')}"):
                         st.write(f"**Name:** {pattern.get('name', '')}")
                         st.write(
                             f"**Description:** {pattern.get('description', '')}")
