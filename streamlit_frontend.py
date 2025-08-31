@@ -944,8 +944,13 @@ def display_analysis_results(results):
             for i, chunk in enumerate(results['chunks'][:10]):  # Show first 10
                 with st.expander(f"Chunk {i+1}"):
                     st.write(f"**Content:** {chunk.get('content', '')}")
-                    if 'metadata' in chunk:
-                        st.json(chunk['metadata'])
+                    st.write(f"**ID:** {chunk.get('id', '')}")
+                    st.write(f"**Type:** {chunk.get('type', '')}")
+                    st.write(f"**Confidence:** {chunk.get('confidence', '')}")
+                    if 'tags' in chunk and chunk['tags']:
+                        st.write(f"**Tags:** {', '.join(chunk['tags'])}")
+                    if 'source' in chunk:
+                        st.write(f"**Source:** {chunk.get('source', '')}")
         else:
             st.info("No chunks available")
 
@@ -955,11 +960,18 @@ def display_analysis_results(results):
             # Show first 10
             for i, inference in enumerate(results['inferences'][:10]):
                 with st.expander(f"Inference {i+1}"):
-                    st.write(f"**Meaning:** {inference.get('meaning', '')}")
                     st.write(f"**Chunk ID:** {inference.get('chunk_id', '')}")
-                    if 'confidence' in inference:
-                        st.write(
-                            f"**Confidence:** {inference.get('confidence', '')}")
+                    if 'meanings' in inference and inference['meanings']:
+                        st.write(f"**Meanings:**")
+                        for j, meaning in enumerate(inference['meanings']):
+                            st.write(f"  {j+1}. {meaning}")
+                    st.write(
+                        f"**Importance:** {inference.get('importance', '')}")
+                    st.write(f"**Context:** {inference.get('context', '')}")
+                    st.write(
+                        f"**Confidence:** {inference.get('confidence', '')}")
+                    st.write(
+                        f"**Reasoning:** {inference.get('reasoning', '')}")
         else:
             st.info("No inferences available")
 
@@ -969,12 +981,17 @@ def display_analysis_results(results):
             # Show first 10
             for i, pattern in enumerate(results['patterns'][:10]):
                 with st.expander(f"Pattern {i+1}"):
-                    st.write(f"**Pattern:** {pattern.get('pattern', '')}")
+                    st.write(f"**Name:** {pattern.get('name', '')}")
                     st.write(
                         f"**Description:** {pattern.get('description', '')}")
-                    if 'frequency' in pattern:
+                    if 'related_inferences' in pattern and pattern['related_inferences']:
                         st.write(
-                            f"**Frequency:** {pattern.get('frequency', '')}")
+                            f"**Related Inferences:** {', '.join(pattern['related_inferences'])}")
+                    if 'themes' in pattern and pattern['themes']:
+                        st.write(f"**Themes:** {', '.join(pattern['themes'])}")
+                    st.write(f"**Strength:** {pattern.get('strength', '')}")
+                    st.write(
+                        f"**Evidence Count:** {pattern.get('evidence_count', '')}")
         else:
             st.info("No patterns available")
 
@@ -984,12 +1001,21 @@ def display_analysis_results(results):
             # Show first 10
             for i, insight in enumerate(results['insights'][:10]):
                 with st.expander(f"Insight {i+1}"):
-                    st.write(f"**Insight:** {insight.get('insight', '')}")
+                    st.write(f"**Headline:** {insight.get('headline', '')}")
+                    st.write(
+                        f"**Explanation:** {insight.get('explanation', '')}")
+                    st.write(
+                        f"**Pattern ID:** {insight.get('pattern_id', '')}")
+                    st.write(
+                        f"**Non-Consensus:** {insight.get('non_consensus', '')}")
+                    st.write(
+                        f"**First Principles:** {insight.get('first_principles', '')}")
                     st.write(
                         f"**Impact Score:** {insight.get('impact_score', '')}")
-                    if 'evidence' in insight:
-                        st.write(
-                            f"**Evidence:** {insight.get('evidence', '')}")
+                    if 'supporting_evidence' in insight and insight['supporting_evidence']:
+                        st.write(f"**Supporting Evidence:**")
+                        for j, evidence in enumerate(insight['supporting_evidence']):
+                            st.write(f"  {j+1}. {evidence}")
         else:
             st.info("No insights available")
 
@@ -1002,12 +1028,15 @@ def display_analysis_results(results):
                     st.write(
                         f"**Principle:** {principle.get('principle', '')}")
                     st.write(
-                        f"**Action Verbs:** {', '.join(principle.get('action_verbs', []))}")
+                        f"**Insight ID:** {principle.get('insight_id', '')}")
+                    if 'action_verbs' in principle and principle['action_verbs']:
+                        st.write(
+                            f"**Action Verbs:** {', '.join(principle['action_verbs'])}")
                     st.write(
                         f"**Design Direction:** {principle.get('design_direction', '')}")
-                    if 'priority' in principle:
-                        st.write(
-                            f"**Priority:** {principle.get('priority', '')}")
+                    st.write(f"**Priority:** {principle.get('priority', '')}")
+                    st.write(
+                        f"**Feasibility:** {principle.get('feasibility', '')}")
         else:
             st.info("No design principles available")
 
