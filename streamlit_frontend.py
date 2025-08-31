@@ -272,26 +272,14 @@ def monitor_analysis_progress(request_id):
     st.markdown(
         f'<h3 class="sub-header">📊 Real-Time Analysis Progress: {request_id}</h3>', unsafe_allow_html=True)
 
-    # Create placeholders for all dynamic content
+    # Create placeholder for progress bar
     progress_bar = st.progress(0)
     overall_status_text = st.empty()
 
-    # Placeholders for metrics
+    # Placeholder for status metric
     status_metric = st.empty()
-    created_metric = st.empty()
-    updated_metric = st.empty()
-
-    # Placeholder for research data
-    research_data_text = st.empty()
-
-    # Placeholder for steps section
-    steps_section = st.empty()
-
     # Placeholder for results section
     results_section = st.empty()
-
-    # Placeholder for completion message
-    completion_message = st.empty()
 
     # Initialize session state for results
     if 'analysis_results' not in st.session_state:
@@ -376,32 +364,29 @@ def monitor_analysis_progress(request_id):
                         st.metric("Updated", updated_at)
 
             # Check if analysis is complete
-            if overall_status == 'completed':
-                steps_section.empty()
-                results_section.empty()
-                research_data_text.empty()
-                completion_message.empty()
-                st.success("🎉 Analysis completed successfully!")
-                st.markdown("### 📄 Final Analysis Results")
-                with st.spinner("Loading final results from S3..."):
-                    results = load_analysis_results(request_id)
-                    if results:
-                        st.session_state.analysis_results = results
-                        display_analysis_results(results)
-                    else:
-                        st.error("❌ Failed to load results from S3")
+            with results_section.container():
+                if overall_status == 'completed':
+                    st.success("🎉 Analysis completed successfully!")
+                    st.markdown("### 📄 Final Analysis Results")
+                    with st.spinner("Loading final results from S3..."):
+                        results = load_analysis_results(request_id)
+                        if results:
+                            st.session_state.analysis_results = results
+                            display_analysis_results(results)
+                        else:
+                            st.error("❌ Failed to load results from S3")
 
-                    # Exit the monitoring loop
-                return
-            elif overall_status == 'failed':
-                st.error("❌ Analysis failed")
-                return
-            else:
-                display_analysis_results(
-                    results=None,
-                    steps_status=steps_status,
-                    is_realtime=True
-                )
+                        # Exit the monitoring loop
+                    return
+                elif overall_status == 'failed':
+                    st.error("❌ Analysis failed")
+                    return
+                else:
+                    display_analysis_results(
+                        results=None,
+                        steps_status=steps_status,
+                        is_realtime=True
+                    )
 
             time.sleep(2)  # Check every 2 seconds
 
