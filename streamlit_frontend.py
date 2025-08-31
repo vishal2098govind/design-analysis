@@ -332,49 +332,62 @@ def monitor_analysis_progress(request_id):
                 f"({completed_steps}/{len(ANALYSIS_STEPS)} steps completed)"
             )
 
-            # Update metrics using placeholders
+            # Update metrics in a compact grid layout
             with status_metric.container():
-                st.metric("Status", analysis.get('overall_status', 'unknown'))
+                # Create a 3-column grid for basic metrics
+                col1, col2, col3 = st.columns(3)
 
-            with created_metric.container():
-                created_at = analysis.get('created_at', 'unknown')
-                if created_at != 'unknown':
-                    try:
-                        parsed_date = pd.to_datetime(
-                            created_at, errors='coerce')
-                        if not pd.isna(parsed_date):
-                            formatted_date = parsed_date.strftime(
-                                '%Y-%m-%d %H:%M:%S')
-                            st.metric("Created", formatted_date)
-                        else:
+                with col1:
+                    st.metric("Status", analysis.get(
+                        'overall_status', 'unknown'))
+
+                with col2:
+                    created_at = analysis.get('created_at', 'unknown')
+                    if created_at != 'unknown':
+                        try:
+                            parsed_date = pd.to_datetime(
+                                created_at, errors='coerce')
+                            if not pd.isna(parsed_date):
+                                formatted_date = parsed_date.strftime(
+                                    '%Y-%m-%d %H:%M:%S')
+                                st.metric("Created", formatted_date)
+                            else:
+                                st.metric("Created", created_at)
+                        except:
                             st.metric("Created", created_at)
-                    except:
+                    else:
                         st.metric("Created", created_at)
-                else:
-                    st.metric("Created", created_at)
 
-            with updated_metric.container():
-                updated_at = analysis.get('updated_at', 'unknown')
-                if updated_at != 'unknown':
-                    try:
-                        parsed_date = pd.to_datetime(
-                            updated_at, errors='coerce')
-                        if not pd.isna(parsed_date):
-                            formatted_date = parsed_date.strftime(
-                                '%Y-%m-%d %H:%M:%S')
-                            st.metric("Updated", formatted_date)
-                        else:
+                with col3:
+                    updated_at = analysis.get('updated_at', 'unknown')
+                    if updated_at != 'unknown':
+                        try:
+                            parsed_date = pd.to_datetime(
+                                updated_at, errors='coerce')
+                            if not pd.isna(parsed_date):
+                                formatted_date = parsed_date.strftime(
+                                    '%Y-%m-%d %H:%M:%S')
+                                st.metric("Updated", formatted_date)
+                            else:
+                                st.metric("Updated", updated_at)
+                        except:
                             st.metric("Updated", updated_at)
-                    except:
+                    else:
                         st.metric("Updated", updated_at)
-                else:
-                    st.metric("Updated", updated_at)
 
-            # Update research data
+            # Research data section in its own row
             with research_data_text.container():
-                st.markdown("### 📁 Research Data")
                 research_data = analysis.get('research_data', '')
-                st.text(f"S3 Path: {research_data}")
+                if research_data:
+                    st.metric("📁 Research Data", "Available")
+                    st.caption(f"S3: {research_data[:30]}...")
+                else:
+                    st.metric("📁 Research Data", "Not set")
+
+            # Clear the old placeholders since we're using a combined layout
+            created_metric.empty()
+            updated_metric.empty()
+            research_data_text.empty()
 
             # Update steps section
             with steps_section.container():
@@ -440,20 +453,24 @@ def monitor_analysis_progress(request_id):
                     st.markdown("### 📄 Analysis Results")
                     st.text(f"S3 Path: {result_data}")
 
-                    # Try to load and display results
-                    if st.button("📥 Load Results", key=f"load_results_{request_id}"):
-                        with st.spinner("Loading results from S3..."):
-                            results = load_analysis_results(request_id)
-                            if results:
-                                st.session_state.analysis_results = results
-                                display_analysis_results(results)
-                            else:
-                                st.error("❌ Failed to load results from S3")
-
             # Check if analysis is complete
             if overall_status == 'completed':
                 with completion_message.container():
                     st.success("🎉 Analysis completed successfully!")
+
+                # Load and display final results with tabbed view
+                result_data = analysis.get(
+                    'analysis_result', {}).get('result_data', '')
+                if result_data:
+                    st.markdown("### 📄 Final Analysis Results")
+                    with st.spinner("Loading final results from S3..."):
+                        results = load_analysis_results(request_id)
+                        if results:
+                            st.session_state.analysis_results = results
+                            display_analysis_results(results)
+                        else:
+                            st.error("❌ Failed to load results from S3")
+
                 break
             elif overall_status == 'failed':
                 with completion_message.container():
@@ -612,7 +629,7 @@ def show_analysis_details(request_id):
         st.error(f"❌ Analysis {request_id} not found")
         return
 
-    # Basic info
+    # Basic info in compact grid layout
     col1, col2, col3 = st.columns(3)
 
     with col1:
@@ -622,7 +639,6 @@ def show_analysis_details(request_id):
         created_at = analysis.get('created_at', 'unknown')
         if created_at != 'unknown':
             try:
-                # Try to parse and format the timestamp
                 parsed_date = pd.to_datetime(created_at, errors='coerce')
                 if not pd.isna(parsed_date):
                     formatted_date = parsed_date.strftime('%Y-%m-%d %H:%M:%S')
@@ -638,7 +654,6 @@ def show_analysis_details(request_id):
         updated_at = analysis.get('updated_at', 'unknown')
         if updated_at != 'unknown':
             try:
-                # Try to parse and format the timestamp
                 parsed_date = pd.to_datetime(updated_at, errors='coerce')
                 if not pd.isna(parsed_date):
                     formatted_date = parsed_date.strftime('%Y-%m-%d %H:%M:%S')
@@ -650,10 +665,13 @@ def show_analysis_details(request_id):
         else:
             st.metric("Updated", updated_at)
 
-    # Research data info
-    st.markdown("### 📁 Research Data")
+    # Research data section in its own row
     research_data = analysis.get('research_data', '')
-    st.text(f"S3 Path: {research_data}")
+    if research_data:
+        st.metric("📁 Research Data", "Available")
+        st.caption(f"S3: {research_data[:30]}...")
+    else:
+        st.metric("📁 Research Data", "Not set")
 
     # Step status
     st.markdown("### 🔄 Analysis Steps")
