@@ -7,7 +7,7 @@ Tracks the status of each analysis step in real-time
 import os
 import json
 import logging
-from time import timezone
+from datetime import timezone
 import boto3
 from datetime import datetime
 from typing import Dict, Optional, Any
