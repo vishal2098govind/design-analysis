@@ -4,6 +4,7 @@ Design Analysis API with S3 Storage Support
 FastAPI application with configurable storage (local or S3) and DynamoDB tracking
 """
 
+from dynamodb_tracker import StepStatus
 from s3_storage import create_s3_storage, S3Storage
 from agentic_analysis import run_agentic_analysis
 from hybrid_agentic_analysis import run_hybrid_agentic_analysis
@@ -612,7 +613,7 @@ async def analyze_research_data(request: AnalysisRequest):
             logger.info(
                 f"🔄 Running hybrid agentic analysis for request {request_id}")
             result = run_hybrid_agentic_analysis(
-                research_data, request_id, research_data_s3_path)
+                research_data, request_id, research_data_s3_path, save_to_s3=False)
         else:  # langchain
             logger.info(
                 f"🔗 Running LangChain agentic analysis for request {request_id}")
@@ -645,6 +646,21 @@ async def analyze_research_data(request: AnalysisRequest):
         if storage_success:
             logger.info(
                 f"✅ Analysis result stored successfully for request {request_id}")
+
+            # Update DynamoDB with the result S3 path if using hybrid implementation
+            if request.implementation == "hybrid" and tracker and request_id:
+                try:
+                    # Get the actual S3 path where the result was stored using storage system
+                    result_s3_path = storage._get_object_key(
+                        request_id, "analysis")
+
+                    # Update DynamoDB with the result S3 path (only the result_data field)
+                    tracker.update_result_data(request_id, result_s3_path)
+                    logger.info(
+                        f"✅ DynamoDB updated with result S3 path: {result_s3_path}")
+                except Exception as e:
+                    logger.error(
+                        f"❌ Failed to update DynamoDB with result S3 path: {e}")
         else:
             logger.warning(
                 f"⚠️ Failed to store analysis result for request {request_id}")

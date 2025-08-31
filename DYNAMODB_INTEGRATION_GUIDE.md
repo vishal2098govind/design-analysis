@@ -18,7 +18,7 @@ This guide explains how to use DynamoDB to track the status of each analysis ste
   "request_id": "analysis_abc123",
   "research_data": "s3://bucket/research-data/interview.txt",
   "analysis_result": {
-    "result_data": "s3://bucket/analysis-results/analysis_abc123.json",
+    "result_data": "s3://bucket/design-analysis/analysis/2024/01/analysis_abc123.json",
     "steps_status": {
       "chunking": {
         "status": "completed",

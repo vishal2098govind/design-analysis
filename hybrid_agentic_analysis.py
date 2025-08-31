@@ -5,6 +5,7 @@ Combines LangChain/LangGraph orchestration with OpenAI's native agentic framewor
 
 import os
 import json
+import logging
 from typing import Dict, List, Any, TypedDict, Optional
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -14,6 +15,9 @@ from langchain_core.output_parsers import JsonOutputParser
 from langgraph.graph import StateGraph, END
 from pydantic import BaseModel, Field
 import uuid
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Import DynamoDB tracker
 try:
@@ -797,7 +801,7 @@ def create_hybrid_agentic_graph():
     return workflow.compile()
 
 
-def run_hybrid_agentic_analysis(research_data: str, request_id: Optional[str] = None, research_data_s3_path: Optional[str] = None) -> Dict[str, Any]:
+def run_hybrid_agentic_analysis(research_data: str, request_id: Optional[str] = None, research_data_s3_path: Optional[str] = None, save_to_s3: bool = True) -> Dict[str, Any]:
     """Run the complete hybrid agentic design analysis workflow"""
 
     # Create the LangGraph workflow
@@ -833,6 +837,26 @@ def run_hybrid_agentic_analysis(research_data: str, request_id: Optional[str] = 
 
     # Run the workflow
     result = graph.invoke(initial_state)
+
+    # Save result to S3 and update DynamoDB result_data field
+    if tracker and request_id and save_to_s3:
+        try:
+            # Import storage functionality
+            from s3_storage import create_s3_storage
+            # Create S3 storage instance
+            storage = create_s3_storage()
+            # Get the actual S3 path where the result was stored using storage system
+            result_s3_path = storage._get_object_key(request_id, "analysis")
+            # Save result to S3
+            success = storage.save_analysis(request_id, result)
+            if success:
+                logger.info(f"✅ Analysis result saved to S3: {result_s3_path}")
+                # Update DynamoDB with the result S3 path (only the result_data field)
+                tracker.update_result_data(request_id, result_s3_path)
+            else:
+                logger.warning(f"⚠️ Failed to save analysis result to S3")
+        except Exception as e:
+            logger.error(f"❌ Error saving result to S3: {e}")
 
     return result
 

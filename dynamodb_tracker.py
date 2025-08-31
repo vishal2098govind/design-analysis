@@ -7,6 +7,7 @@ Tracks the status of each analysis step in real-time
 import os
 import json
 import logging
+from time import timezone
 import boto3
 from datetime import datetime
 from typing import Dict, Optional, Any
@@ -334,6 +335,45 @@ class DynamoDBTracker:
 
         except Exception as e:
             logger.error(f"❌ Failed to update step status: {e}")
+            return False
+
+    def update_result_data(self, request_id: str, result_s3_path: str) -> bool:
+        """Update only the result_data field with S3 path"""
+        try:
+            logger.info(
+                f"📝 Updating result data: {request_id} - {result_s3_path}")
+
+            timestamp = datetime.now(timezone.utc).isoformat()
+
+            # Update only the result_data field
+            update_expression = "#analysis_result.#result_data = :result_data, #updated_at = :timestamp"
+
+            expression_attribute_names = {
+                '#analysis_result': 'analysis_result',
+                '#result_data': 'result_data',
+                '#updated_at': 'updated_at'
+            }
+
+            expression_attribute_values = {
+                ':result_data': {'S': result_s3_path},
+                ':timestamp': {'S': timestamp}
+            }
+
+            # Update item
+            self.dynamodb.update_item(
+                TableName=self.table_name,
+                Key={'request_id': {'S': request_id}},
+                UpdateExpression=update_expression,
+                ExpressionAttributeNames=expression_attribute_names,
+                ExpressionAttributeValues=expression_attribute_values
+            )
+
+            logger.info(
+                f"✅ Result data updated: {request_id} - {result_s3_path}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Failed to update result data: {e}")
             return False
 
     def get_analysis_status(self, request_id: str) -> Optional[Dict[str, Any]]:
