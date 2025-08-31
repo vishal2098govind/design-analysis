@@ -8,24 +8,9 @@ Type=simple
 User=ec2-user
 WorkingDirectory=/home/ec2-user/aas
 Environment=PATH=/home/ec2-user/aas/venv/bin
-# Environment variables will be loaded from .env file by the application
-
 ExecStart=/home/ec2-user/aas/venv/bin/python run_streamlit.py
-ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=10
-
-# Security settings
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/home/ec2-user/aas
-
-# Logging
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=streamlit-frontend
 
 [Install]
 WantedBy=multi-user.target
