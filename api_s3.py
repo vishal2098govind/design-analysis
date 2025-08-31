@@ -353,6 +353,13 @@ class AnalysisResponse(BaseModel):
     execution_time: float
 
 
+class AnalysisStartResponse(BaseModel):
+    request_id: str
+    status: str
+    message: str
+    timestamp: str
+
+
 class HealthResponse(BaseModel):
     status: str
     timestamp: str
@@ -479,7 +486,7 @@ async def upload_research_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
-@app.post("/analyze", response_model=AnalysisResponse)
+@app.post("/analyze", response_model=AnalysisStartResponse)
 async def analyze_research_data(request: AnalysisRequest):
     """Analyze research data using the specified implementation"""
 
