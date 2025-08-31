@@ -466,8 +466,34 @@ def show_analysis_history():
 
         # Display as table
         df = pd.DataFrame(analyses)
-        df['created_at'] = pd.to_datetime(df['created_at'])
-        df['updated_at'] = pd.to_datetime(df['updated_at'])
+
+        # Parse datetime columns with proper error handling for both old and new formats
+        def parse_timestamp(ts_str):
+            """Parse timestamp string handling both old and new formats"""
+            if pd.isna(ts_str) or ts_str == '':
+                return pd.NaT
+
+            # Handle common timestamp formats
+            try:
+                # Try ISO8601 format first (new format with timezone)
+                return pd.to_datetime(ts_str, format='ISO8601', errors='coerce')
+            except:
+                try:
+                    # Try parsing as ISO format without timezone (old format)
+                    return pd.to_datetime(ts_str, errors='coerce')
+                except:
+                    try:
+                        # Try parsing with pandas' flexible parser
+                        return pd.to_datetime(ts_str, infer_datetime_format=True, errors='coerce')
+                    except:
+                        # Final fallback - log warning in debug mode
+                        if DEBUG:
+                            st.warning(f"Could not parse timestamp: {ts_str}")
+                        return pd.NaT
+
+        # Apply parsing to both columns
+        df['created_at'] = df['created_at'].apply(parse_timestamp)
+        df['updated_at'] = df['updated_at'].apply(parse_timestamp)
 
         display_df = df[['request_id', 'overall_status',
                          'created_at', 'updated_at']].copy()
@@ -507,10 +533,36 @@ def show_analysis_details(request_id):
         st.metric("Status", analysis.get('overall_status', 'unknown'))
 
     with col2:
-        st.metric("Created", analysis.get('created_at', 'unknown'))
+        created_at = analysis.get('created_at', 'unknown')
+        if created_at != 'unknown':
+            try:
+                # Try to parse and format the timestamp
+                parsed_date = pd.to_datetime(created_at, errors='coerce')
+                if not pd.isna(parsed_date):
+                    formatted_date = parsed_date.strftime('%Y-%m-%d %H:%M:%S')
+                    st.metric("Created", formatted_date)
+                else:
+                    st.metric("Created", created_at)
+            except:
+                st.metric("Created", created_at)
+        else:
+            st.metric("Created", created_at)
 
     with col3:
-        st.metric("Updated", analysis.get('updated_at', 'unknown'))
+        updated_at = analysis.get('updated_at', 'unknown')
+        if updated_at != 'unknown':
+            try:
+                # Try to parse and format the timestamp
+                parsed_date = pd.to_datetime(updated_at, errors='coerce')
+                if not pd.isna(parsed_date):
+                    formatted_date = parsed_date.strftime('%Y-%m-%d %H:%M:%S')
+                    st.metric("Updated", formatted_date)
+                else:
+                    st.metric("Updated", updated_at)
+            except:
+                st.metric("Updated", updated_at)
+        else:
+            st.metric("Updated", updated_at)
 
     # Research data info
     st.markdown("### 📁 Research Data")
@@ -546,9 +598,28 @@ def show_analysis_details(request_id):
 
         with col3:
             if started_at:
-                st.write(f"**Started:** {started_at}")
+                try:
+                    parsed_started = pd.to_datetime(
+                        started_at, errors='coerce')
+                    if not pd.isna(parsed_started):
+                        formatted_started = parsed_started.strftime('%H:%M:%S')
+                        st.write(f"**Started:** {formatted_started}")
+                    else:
+                        st.write(f"**Started:** {started_at}")
+                except:
+                    st.write(f"**Started:** {started_at}")
             if completed_at:
-                st.write(f"**Completed:** {completed_at}")
+                try:
+                    parsed_completed = pd.to_datetime(
+                        completed_at, errors='coerce')
+                    if not pd.isna(parsed_completed):
+                        formatted_completed = parsed_completed.strftime(
+                            '%H:%M:%S')
+                        st.write(f"**Completed:** {formatted_completed}")
+                    else:
+                        st.write(f"**Completed:** {completed_at}")
+                except:
+                    st.write(f"**Completed:** {completed_at}")
 
         st.divider()
 
@@ -729,8 +800,15 @@ def get_analysis_history(status_filter="All", date_filter=None, search_term=None
 
         if date_filter:
             date_str = date_filter.strftime('%Y-%m-%d')
-            analyses = [a for a in analyses if a.get(
-                'created_at', '').startswith(date_str)]
+            # Filter by date more robustly - handle both old and new timestamp formats
+            filtered_analyses = []
+            for analysis in analyses:
+                created_at = analysis.get('created_at', '')
+                if created_at:
+                    # Handle both formats: "2025-08-31T..." and "2025-08-31T...+00:00"
+                    if created_at.startswith(date_str):
+                        filtered_analyses.append(analysis)
+            analyses = filtered_analyses
 
         if search_term:
             analyses = [a for a in analyses if search_term.lower()

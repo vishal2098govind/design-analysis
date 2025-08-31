@@ -232,8 +232,8 @@ class DynamoDBTracker:
                         'steps_status': {'M': steps_status}
                     }
                 },
-                'created_at': {'S': datetime.utcnow().isoformat()},
-                'updated_at': {'S': datetime.utcnow().isoformat()},
+                'created_at': {'S': datetime.now(timezone.utc).isoformat()},
+                'updated_at': {'S': datetime.now(timezone.utc).isoformat()},
                 'overall_status': {'S': StepStatus.PENDING.value}
             }
 
@@ -254,7 +254,7 @@ class DynamoDBTracker:
                 f"🔄 Updating step status: {request_id} - {step_name} - {status.value}")
 
             # Get current timestamp
-            timestamp = datetime.utcnow().isoformat()
+            timestamp = datetime.now(timezone.utc).isoformat()
 
             # Prepare update expression
             update_expression = "SET "
