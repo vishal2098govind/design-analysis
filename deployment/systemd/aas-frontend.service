@@ -10,7 +10,7 @@ WorkingDirectory=/home/ec2-user/aas
 Environment=PATH=/home/ec2-user/aas/venv/bin
 # Environment variables will be loaded from .env file by the application
 
-ExecStart=/home/ec2-user/aas/venv/bin/streamlit run streamlit_frontend.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true --server.enableCORS=false --server.enableXsrfProtection=false
+ExecStart=/home/ec2-user/aas/venv/bin/python run_streamlit.py
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=10
