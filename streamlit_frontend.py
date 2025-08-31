@@ -387,7 +387,6 @@ def monitor_analysis_progress(request_id):
             # Clear the old placeholders since we're using a combined layout
             created_metric.empty()
             updated_metric.empty()
-            research_data_text.empty()
 
             # Update steps section
             with steps_section.container():
@@ -471,11 +470,12 @@ def monitor_analysis_progress(request_id):
                         else:
                             st.error("❌ Failed to load results from S3")
 
-                break
+                # Exit the monitoring loop
+                return
             elif overall_status == 'failed':
                 with completion_message.container():
                     st.error("❌ Analysis failed")
-                break
+                return
 
             time.sleep(2)  # Check every 2 seconds
 
