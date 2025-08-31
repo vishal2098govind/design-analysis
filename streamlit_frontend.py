@@ -212,7 +212,7 @@ def show_new_analysis():
     # Get the actual S3 path for analysis
     analysis_s3_path = s3_file_path or st.session_state.get('uploaded_s3_path')
 
-    if st.button("🚀 Start Analysis", type="primary", disabled=not (has_research_data or has_s3_file) or st.session_state['analysis_started']):
+    if st.button("🚀 Start Analysis", type="primary", disabled=not (has_research_data or has_s3_file) and not st.session_state['analysis_started']):
         if has_research_data or has_s3_file:
             with st.spinner("Starting analysis..."):
                 result = submit_analysis(
