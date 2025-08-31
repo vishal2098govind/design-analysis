@@ -375,83 +375,6 @@ def monitor_analysis_progress(request_id):
                     else:
                         st.metric("Updated", updated_at)
 
-            # Research data section in its own row
-            with research_data_text.container():
-                research_data = analysis.get('research_data', '')
-                if research_data:
-                    st.metric("📁 Research Data", "Available")
-                    st.caption(f"S3: {research_data[:30]}...")
-                else:
-                    st.metric("📁 Research Data", "Not set")
-
-            # Clear the old placeholders since we're using a combined layout
-            created_metric.empty()
-            updated_metric.empty()
-
-            # Update steps section
-            with steps_section.container():
-                st.markdown("### 🔄 Analysis Steps")
-
-                for step_name in ANALYSIS_STEPS:
-                    step_info = steps_status.get(step_name, {})
-                    status = step_info.get('status', 'unknown')
-                    message = step_info.get('message', '')
-                    started_at = step_info.get('started_at', '')
-                    completed_at = step_info.get('completed_at', '')
-
-                    col1, col2, col3 = st.columns([1, 2, 2])
-
-                    with col1:
-                        status_emoji = {
-                            'completed': '✅',
-                            'processing': '🔄',
-                            'failed': '❌',
-                            'pending': '⏳'
-                        }.get(status, '❓')
-                        st.write(f"{status_emoji} {step_name.title()}")
-
-                    with col2:
-                        st.write(f"**Status:** {status}")
-                        st.write(f"**Message:** {message}")
-
-                    with col3:
-                        if started_at:
-                            try:
-                                parsed_started = pd.to_datetime(
-                                    started_at, errors='coerce')
-                                if not pd.isna(parsed_started):
-                                    formatted_started = parsed_started.strftime(
-                                        '%H:%M:%S')
-                                    st.write(
-                                        f"**Started:** {formatted_started}")
-                                else:
-                                    st.write(f"**Started:** {started_at}")
-                            except:
-                                st.write(f"**Started:** {started_at}")
-                        if completed_at:
-                            try:
-                                parsed_completed = pd.to_datetime(
-                                    completed_at, errors='coerce')
-                                if not pd.isna(parsed_completed):
-                                    formatted_completed = parsed_completed.strftime(
-                                        '%H:%M:%S')
-                                    st.write(
-                                        f"**Completed:** {formatted_completed}")
-                                else:
-                                    st.write(f"**Completed:** {completed_at}")
-                            except:
-                                st.write(f"**Completed:** {completed_at}")
-
-                    st.divider()
-
-            # Update results section
-            with results_section.container():
-                result_data = analysis.get(
-                    'analysis_result', {}).get('result_data', '')
-                if result_data:
-                    st.markdown("### 📄 Analysis Results")
-                    st.text(f"S3 Path: {result_data}")
-
             # Check if analysis is complete
             if overall_status == 'completed':
                 steps_section.empty()
@@ -473,6 +396,12 @@ def monitor_analysis_progress(request_id):
             elif overall_status == 'failed':
                 st.error("❌ Analysis failed")
                 return
+            else:
+                display_analysis_results(
+                    results=None,
+                    steps_status=steps_status,
+                    is_realtime=True
+                )
 
             time.sleep(2)  # Check every 2 seconds
 
@@ -1002,8 +931,8 @@ def load_analysis_results(request_id):
         return None
 
 
-def display_analysis_results(results):
-    """Display analysis results in a formatted way"""
+def display_analysis_results(results=None, steps_status=None, is_realtime=False):
+    """Display analysis results in a formatted way - works for both real-time and final results"""
 
     st.markdown("### 📊 Analysis Results")
 
@@ -1013,105 +942,296 @@ def display_analysis_results(results):
 
     # Chunks tab
     with result_tabs[0]:
-        if 'chunks' in results and results['chunks']:
-            for i, chunk in enumerate(results['chunks'][:10]):  # Show first 10
-                with st.expander(f"Chunk {i+1}"):
-                    st.write(f"**Content:** {chunk.get('content', '')}")
-                    st.write(f"**ID:** {chunk.get('id', '')}")
-                    st.write(f"**Type:** {chunk.get('type', '')}")
-                    st.write(f"**Confidence:** {chunk.get('confidence', '')}")
-                    if 'tags' in chunk and chunk['tags']:
-                        st.write(f"**Tags:** {', '.join(chunk['tags'])}")
-                    if 'source' in chunk:
-                        st.write(f"**Source:** {chunk.get('source', '')}")
+        if is_realtime and steps_status:
+            chunk_status = steps_status.get(
+                'chunking', {}).get('status', 'pending')
+            if chunk_status == 'completed':
+                if results and 'chunks' in results and results['chunks']:
+                    # Show first 10
+                    for i, chunk in enumerate(results['chunks'][:10]):
+                        with st.expander(f"Pattern {i+1}"):
+                            st.write(
+                                f"**Content:** {chunk.get('content', '')}")
+                            st.write(f"**ID:** {chunk.get('id', '')}")
+                            st.write(f"**Type:** {chunk.get('type', '')}")
+                            st.write(
+                                f"**Confidence:** {chunk.get('confidence', '')}")
+                            if 'tags' in chunk and chunk['tags']:
+                                st.write(
+                                    f"**Tags:** {', '.join(chunk['tags'])}")
+                            if 'source' in chunk:
+                                st.write(
+                                    f"**Source:** {chunk.get('source', '')}")
+                else:
+                    st.info("✅ Chunking completed - Loading results...")
+            elif chunk_status == 'processing':
+                st.info("🔄 Chunking in progress...")
+                with st.spinner("Breaking down research data into chunks"):
+                    st.write("**Status:** Processing")
+                    st.write(
+                        "**Message:** Analyzing and segmenting research data")
+            elif chunk_status == 'failed':
+                st.error("❌ Chunking failed")
+                if steps_status.get('chunking', {}).get('message'):
+                    st.write(
+                        f"**Error:** {steps_status['chunking']['message']}")
+            else:
+                st.info("⏳ Chunking pending")
         else:
-            st.info("No chunks available")
+            # Final results display
+            if results and 'chunks' in results and results['chunks']:
+                # Show first 10
+                for i, chunk in enumerate(results['chunks'][:10]):
+                    with st.expander(f"Chunk {i+1}"):
+                        st.write(f"**Content:** {chunk.get('content', '')}")
+                        st.write(f"**ID:** {chunk.get('id', '')}")
+                        st.write(f"**Type:** {chunk.get('type', '')}")
+                        st.write(
+                            f"**Confidence:** {chunk.get('confidence', '')}")
+                        if 'tags' in chunk and chunk['tags']:
+                            st.write(f"**Tags:** {', '.join(chunk['tags'])}")
+                        if 'source' in chunk:
+                            st.write(f"**Source:** {chunk.get('source', '')}")
+            else:
+                st.info("No chunks available")
 
     # Inferences tab
     with result_tabs[1]:
-        if 'inferences' in results and results['inferences']:
-            # Show first 10
-            for i, inference in enumerate(results['inferences'][:10]):
-                with st.expander(f"Inference {i+1}"):
-                    st.write(f"**Chunk ID:** {inference.get('chunk_id', '')}")
-                    if 'meanings' in inference and inference['meanings']:
-                        st.write(f"**Meanings:**")
-                        for j, meaning in enumerate(inference['meanings']):
-                            st.write(f"  {j+1}. {meaning}")
+        if is_realtime and steps_status:
+            inference_status = steps_status.get(
+                'inferring', {}).get('status', 'pending')
+            if inference_status == 'completed':
+                if results and 'inferences' in results and results['inferences']:
+                    for i, inference in enumerate(results['inferences'][:10]):
+                        with st.expander(f"Inference {i+1}"):
+                            st.write(
+                                f"**Chunk ID:** {inference.get('chunk_id', '')}")
+                            if 'meanings' in inference and inference['meanings']:
+                                st.write(f"**Meanings:**")
+                                for j, meaning in enumerate(inference['meanings']):
+                                    st.write(f"  {j+1}. {meaning}")
+                            st.write(
+                                f"**Importance:** {inference.get('importance', '')}")
+                            st.write(
+                                f"**Context:** {inference.get('context', '')}")
+                            st.write(
+                                f"**Confidence:** {inference.get('confidence', '')}")
+                            st.write(
+                                f"**Reasoning:** {inference.get('reasoning', '')}")
+                else:
+                    st.info("✅ Inferring completed - Loading results...")
+            elif inference_status == 'processing':
+                st.info("🔄 Inferring in progress...")
+                with st.spinner("Extracting meanings from chunks"):
+                    st.write("**Status:** Processing")
+                    st.write("**Message:** Analyzing chunks for deeper insights")
+            elif inference_status == 'failed':
+                st.error("❌ Inferring failed")
+                if steps_status.get('inferring', {}).get('message'):
                     st.write(
-                        f"**Importance:** {inference.get('importance', '')}")
-                    st.write(f"**Context:** {inference.get('context', '')}")
-                    st.write(
-                        f"**Confidence:** {inference.get('confidence', '')}")
-                    st.write(
-                        f"**Reasoning:** {inference.get('reasoning', '')}")
+                        f"**Error:** {steps_status['inferring']['message']}")
+            else:
+                st.info("⏳ Inferring pending")
         else:
-            st.info("No inferences available")
+            # Final results display
+            if results and 'inferences' in results and results['inferences']:
+                for i, inference in enumerate(results['inferences'][:10]):
+                    with st.expander(f"Inference {i+1}"):
+                        st.write(
+                            f"**Chunk ID:** {inference.get('chunk_id', '')}")
+                        if 'meanings' in inference and inference['meanings']:
+                            st.write(f"**Meanings:**")
+                            for j, meaning in enumerate(inference['meanings']):
+                                st.write(f"  {j+1}. {meaning}")
+                        st.write(
+                            f"**Importance:** {inference.get('importance', '')}")
+                        st.write(
+                            f"**Context:** {inference.get('context', '')}")
+                        st.write(
+                            f"**Confidence:** {inference.get('confidence', '')}")
+                        st.write(
+                            f"**Reasoning:** {inference.get('reasoning', '')}")
+            else:
+                st.info("No inferences available")
 
     # Patterns tab
     with result_tabs[2]:
-        if 'patterns' in results and results['patterns']:
-            # Show first 10
-            for i, pattern in enumerate(results['patterns'][:10]):
-                with st.expander(f"Pattern {i+1}"):
-                    st.write(f"**Name:** {pattern.get('name', '')}")
+        if is_realtime and steps_status:
+            pattern_status = steps_status.get(
+                'relating', {}).get('status', 'pending')
+            if pattern_status == 'completed':
+                if results and 'patterns' in results and results['patterns']:
+                    for i, pattern in enumerate(results['patterns'][:10]):
+                        with st.expander(f"Pattern {i+1}"):
+                            st.write(f"**Name:** {pattern.get('name', '')}")
+                            st.write(
+                                f"**Description:** {pattern.get('description', '')}")
+                            if 'related_inferences' in pattern and pattern['related_inferences']:
+                                st.write(
+                                    f"**Related Inferences:** {', '.join(pattern['related_inferences'])}")
+                            if 'themes' in pattern and pattern['themes']:
+                                st.write(
+                                    f"**Themes:** {', '.join(pattern['themes'])}")
+                            st.write(
+                                f"**Strength:** {pattern.get('strength', '')}")
+                            st.write(
+                                f"**Evidence Count:** {pattern.get('evidence_count', '')}")
+                else:
+                    st.info(
+                        "✅ Pattern identification completed - Loading results...")
+            elif pattern_status == 'processing':
+                st.info("🔄 Pattern identification in progress...")
+                with st.spinner("Finding relationships and patterns"):
+                    st.write("**Status:** Processing")
+                    st.write("**Message:** Connecting insights across chunks")
+            elif pattern_status == 'failed':
+                st.error("❌ Pattern identification failed")
+                if steps_status.get('relating', {}).get('message'):
                     st.write(
-                        f"**Description:** {pattern.get('description', '')}")
-                    if 'related_inferences' in pattern and pattern['related_inferences']:
-                        st.write(
-                            f"**Related Inferences:** {', '.join(pattern['related_inferences'])}")
-                    if 'themes' in pattern and pattern['themes']:
-                        st.write(f"**Themes:** {', '.join(pattern['themes'])}")
-                    st.write(f"**Strength:** {pattern.get('strength', '')}")
-                    st.write(
-                        f"**Evidence Count:** {pattern.get('evidence_count', '')}")
+                        f"**Error:** {steps_status['relating']['message']}")
+            else:
+                st.info("⏳ Pattern identification pending")
         else:
-            st.info("No patterns available")
+            # Final results display
+            if results and 'patterns' in results and results['patterns']:
+                for i, pattern in enumerate(results['patterns'][:10]):
+                    with st.expander(f"Chunk {i+1}"):
+                        st.write(f"**Name:** {pattern.get('name', '')}")
+                        st.write(
+                            f"**Description:** {pattern.get('description', '')}")
+                        if 'related_inferences' in pattern and pattern['related_inferences']:
+                            st.write(
+                                f"**Related Inferences:** {', '.join(pattern['related_inferences'])}")
+                        if 'themes' in pattern and pattern['themes']:
+                            st.write(
+                                f"**Themes:** {', '.join(pattern['themes'])}")
+                        st.write(
+                            f"**Strength:** {pattern.get('strength', '')}")
+                        st.write(
+                            f"**Evidence Count:** {pattern.get('evidence_count', '')}")
+            else:
+                st.info("No patterns available")
 
     # Insights tab
     with result_tabs[3]:
-        if 'insights' in results and results['insights']:
-            # Show first 10
-            for i, insight in enumerate(results['insights'][:10]):
-                with st.expander(f"Insight {i+1}"):
-                    st.write(f"**Headline:** {insight.get('headline', '')}")
+        if is_realtime and steps_status:
+            insight_status = steps_status.get(
+                'explaining', {}).get('status', 'pending')
+            if insight_status == 'completed':
+                if results and 'insights' in results and results['insights']:
+                    for i, insight in enumerate(results['insights'][:10]):
+                        with st.expander(f"Insight {i+1}"):
+                            st.write(
+                                f"**Headline:** {insight.get('headline', '')}")
+                            st.write(
+                                f"**Explanation:** {insight.get('explanation', '')}")
+                            st.write(
+                                f"**Pattern ID:** {insight.get('pattern_id', '')}")
+                            st.write(
+                                f"**Non-Consensus:** {insight.get('non_consensus', '')}")
+                            st.write(
+                                f"**First Principles:** {insight.get('first_principles', '')}")
+                            st.write(
+                                f"**Impact Score:** {insight.get('impact_score', '')}")
+                            if 'supporting_evidence' in insight and insight['supporting_evidence']:
+                                st.write(f"**Supporting Evidence:**")
+                                for j, evidence in enumerate(insight['supporting_evidence']):
+                                    st.write(f"  {j+1}. {evidence}")
+                else:
+                    st.info("✅ Insight generation completed - Loading results...")
+            elif insight_status == 'processing':
+                st.info("🔄 Insight generation in progress...")
+                with st.spinner("Generating insights from patterns"):
+                    st.write("**Status:** Processing")
+                    st.write("**Message:** Creating actionable insights")
+            elif insight_status == 'failed':
+                st.error("❌ Insight generation failed")
+                if steps_status.get('explaining', {}).get('message'):
                     st.write(
-                        f"**Explanation:** {insight.get('explanation', '')}")
-                    st.write(
-                        f"**Pattern ID:** {insight.get('pattern_id', '')}")
-                    st.write(
-                        f"**Non-Consensus:** {insight.get('non_consensus', '')}")
-                    st.write(
-                        f"**First Principles:** {insight.get('first_principles', '')}")
-                    st.write(
-                        f"**Impact Score:** {insight.get('impact_score', '')}")
-                    if 'supporting_evidence' in insight and insight['supporting_evidence']:
-                        st.write(f"**Supporting Evidence:**")
-                        for j, evidence in enumerate(insight['supporting_evidence']):
-                            st.write(f"  {j+1}. {evidence}")
+                        f"**Error:** {steps_status['explaining']['message']}")
+            else:
+                st.info("⏳ Insight generation pending")
         else:
-            st.info("No insights available")
+            # Final results display
+            if results and 'insights' in results and results['insights']:
+                for i, insight in enumerate(results['insights'][:10]):
+                    with st.expander(f"Insight {i+1}"):
+                        st.write(
+                            f"**Headline:** {insight.get('headline', '')}")
+                        st.write(
+                            f"**Explanation:** {insight.get('explanation', '')}")
+                        st.write(
+                            f"**Pattern ID:** {insight.get('pattern_id', '')}")
+                        st.write(
+                            f"**Non-Consensus:** {insight.get('non_consensus', '')}")
+                        st.write(
+                            f"**First Principles:** {insight.get('first_principles', '')}")
+                        st.write(
+                            f"**Impact Score:** {insight.get('impact_score', '')}")
+                        if 'supporting_evidence' in insight and insight['supporting_evidence']:
+                            st.write(f"**Supporting Evidence:**")
+                            for j, evidence in enumerate(insight['supporting_evidence']):
+                                st.write(f"  {j+1}. {evidence}")
+            else:
+                st.info("No insights available")
 
     # Design Principles tab
     with result_tabs[4]:
-        if 'design_principles' in results and results['design_principles']:
-            # Show first 10
-            for i, principle in enumerate(results['design_principles'][:10]):
-                with st.expander(f"Principle {i+1}"):
+        if is_realtime and steps_status:
+            principle_status = steps_status.get(
+                'activating', {}).get('status', 'pending')
+            if principle_status == 'completed':
+                if results and 'design_principles' in results and results['design_principles']:
+                    for i, principle in enumerate(results['design_principles'][:10]):
+                        with st.expander(f"Principle {i+1}"):
+                            st.write(
+                                f"**Principle:** {principle.get('principle', '')}")
+                            st.write(
+                                f"**Insight ID:** {principle.get('insight_id', '')}")
+                            if 'action_verbs' in principle and principle['action_verbs']:
+                                st.write(
+                                    f"**Action Verbs:** {', '.join(principle['action_verbs'])}")
+                            st.write(
+                                f"**Design Direction:** {principle.get('design_direction', '')}")
+                            st.write(
+                                f"**Priority:** {principle.get('priority', '')}")
+                            st.write(
+                                f"**Feasibility:** {principle.get('feasibility', '')}")
+                else:
+                    st.info("✅ Design principles completed - Loading results...")
+            elif principle_status == 'processing':
+                st.info("🔄 Design principles in progress...")
+                with st.spinner("Creating actionable design principles"):
+                    st.write("**Status:** Processing")
                     st.write(
-                        f"**Principle:** {principle.get('principle', '')}")
+                        "**Message:** Converting insights to design guidance")
+            elif principle_status == 'failed':
+                st.error("❌ Design principles failed")
+                if steps_status.get('activating', {}).get('message'):
                     st.write(
-                        f"**Insight ID:** {principle.get('insight_id', '')}")
-                    if 'action_verbs' in principle and principle['action_verbs']:
-                        st.write(
-                            f"**Action Verbs:** {', '.join(principle['action_verbs'])}")
-                    st.write(
-                        f"**Design Direction:** {principle.get('design_direction', '')}")
-                    st.write(f"**Priority:** {principle.get('priority', '')}")
-                    st.write(
-                        f"**Feasibility:** {principle.get('feasibility', '')}")
+                        f"**Error:** {steps_status['activating']['message']}")
+            else:
+                st.info("⏳ Design principles pending")
         else:
-            st.info("No design principles available")
+            # Final results display
+            if results and 'design_principles' in results and results['design_principles']:
+                for i, principle in enumerate(results['design_principles'][:10]):
+                    with st.expander(f"Principle {i+1}"):
+                        st.write(
+                            f"**Principle:** {principle.get('principle', '')}")
+                        st.write(
+                            f"**Insight ID:** {principle.get('insight_id', '')}")
+                        if 'action_verbs' in principle and principle['action_verbs']:
+                            st.write(
+                                f"**Action Verbs:** {', '.join(principle['action_verbs'])}")
+                        st.write(
+                            f"**Design Direction:** {principle.get('design_direction', '')}")
+                        st.write(
+                            f"**Priority:** {principle.get('priority', '')}")
+                        st.write(
+                            f"**Feasibility:** {principle.get('feasibility', '')}")
+            else:
+                st.info("No design principles available")
 
 
 if __name__ == "__main__":
