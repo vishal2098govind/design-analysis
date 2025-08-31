@@ -267,11 +267,10 @@ def show_new_analysis():
 
 
 def monitor_analysis_progress(request_id):
-    """Monitor analysis progress in real-time with individual step tabs"""
+    """Monitor analysis progress in real-time with detailed step information"""
 
-    # Create tabs for each step
-    tab_names = [f"📝 {step.title()}" for step in ANALYSIS_STEPS]
-    tabs = st.tabs(tab_names)
+    st.markdown(
+        f'<h3 class="sub-header">📊 Real-Time Analysis Progress: {request_id}</h3>', unsafe_allow_html=True)
 
     # Progress bar for overall progress
     progress_bar = st.progress(0)
@@ -319,26 +318,126 @@ def monitor_analysis_progress(request_id):
                     f"({completed_steps}/{len(ANALYSIS_STEPS)} steps completed)"
                 )
 
-                # Update each step tab
-                for i, step_name in enumerate(ANALYSIS_STEPS):
-                    with tabs[i]:
-                        show_step_status(step_name, steps_status.get(
-                            step_name, {}), request_id)
+                # Basic info (same as analysis history)
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    st.metric("Status", analysis.get(
+                        'overall_status', 'unknown'))
+
+                with col2:
+                    created_at = analysis.get('created_at', 'unknown')
+                    if created_at != 'unknown':
+                        try:
+                            parsed_date = pd.to_datetime(
+                                created_at, errors='coerce')
+                            if not pd.isna(parsed_date):
+                                formatted_date = parsed_date.strftime(
+                                    '%Y-%m-%d %H:%M:%S')
+                                st.metric("Created", formatted_date)
+                            else:
+                                st.metric("Created", created_at)
+                        except:
+                            st.metric("Created", created_at)
+                    else:
+                        st.metric("Created", created_at)
+
+                with col3:
+                    updated_at = analysis.get('updated_at', 'unknown')
+                    if updated_at != 'unknown':
+                        try:
+                            parsed_date = pd.to_datetime(
+                                updated_at, errors='coerce')
+                            if not pd.isna(parsed_date):
+                                formatted_date = parsed_date.strftime(
+                                    '%Y-%m-%d %H:%M:%S')
+                                st.metric("Updated", formatted_date)
+                            else:
+                                st.metric("Updated", updated_at)
+                        except:
+                            st.metric("Updated", updated_at)
+                    else:
+                        st.metric("Updated", updated_at)
+
+                # Research data info
+                st.markdown("### 📁 Research Data")
+                research_data = analysis.get('research_data', '')
+                st.text(f"S3 Path: {research_data}")
+
+                # Step status (same detailed display as analysis history)
+                st.markdown("### 🔄 Analysis Steps")
+
+                for step_name in ANALYSIS_STEPS:
+                    step_info = steps_status.get(step_name, {})
+                    status = step_info.get('status', 'unknown')
+                    message = step_info.get('message', '')
+                    started_at = step_info.get('started_at', '')
+                    completed_at = step_info.get('completed_at', '')
+
+                    col1, col2, col3 = st.columns([1, 2, 2])
+
+                    with col1:
+                        status_emoji = {
+                            'completed': '✅',
+                            'processing': '🔄',
+                            'failed': '❌',
+                            'pending': '⏳'
+                        }.get(status, '❓')
+                        st.write(f"{status_emoji} {step_name.title()}")
+
+                    with col2:
+                        st.write(f"**Status:** {status}")
+                        st.write(f"**Message:** {message}")
+
+                    with col3:
+                        if started_at:
+                            try:
+                                parsed_started = pd.to_datetime(
+                                    started_at, errors='coerce')
+                                if not pd.isna(parsed_started):
+                                    formatted_started = parsed_started.strftime(
+                                        '%H:%M:%S')
+                                    st.write(
+                                        f"**Started:** {formatted_started}")
+                                else:
+                                    st.write(f"**Started:** {started_at}")
+                            except:
+                                st.write(f"**Started:** {started_at}")
+                        if completed_at:
+                            try:
+                                parsed_completed = pd.to_datetime(
+                                    completed_at, errors='coerce')
+                                if not pd.isna(parsed_completed):
+                                    formatted_completed = parsed_completed.strftime(
+                                        '%H:%M:%S')
+                                    st.write(f"**Completed:** {completed_at}")
+                                else:
+                                    st.write(f"**Completed:** {completed_at}")
+                            except:
+                                st.write(f"**Completed:** {completed_at}")
+
+                    st.divider()
+
+                # Results section (when completed)
+                result_data = analysis.get(
+                    'analysis_result', {}).get('result_data', '')
+                if result_data:
+                    st.markdown("### 📄 Analysis Results")
+                    st.text(f"S3 Path: {result_data}")
+
+                    # Try to load and display results
+                    if st.button("📥 Load Results", key=f"load_results_{request_id}"):
+                        with st.spinner("Loading results from S3..."):
+                            results = load_analysis_results(request_id)
+                            if results:
+                                st.session_state.analysis_results = results
+                                display_analysis_results(results)
+                            else:
+                                st.error("❌ Failed to load results from S3")
 
                 # Check if analysis is complete
                 if overall_status == 'completed':
                     st.success("🎉 Analysis completed successfully!")
-
-                    # Load and display final results
-                    result_data = analysis.get(
-                        'analysis_result', {}).get('result_data', '')
-                    if result_data:
-                        st.markdown("### 📄 Loading Final Results...")
-                        results = load_analysis_results(request_id)
-                        if results:
-                            st.session_state.analysis_results = results
-                            display_final_results(results, tabs)
-
                     break
                 elif overall_status == 'failed':
                     st.error("❌ Analysis failed")
@@ -349,127 +448,6 @@ def monitor_analysis_progress(request_id):
             except Exception as e:
                 st.error(f"❌ Error monitoring progress: {str(e)}")
                 break
-
-
-def show_step_status(step_name, step_info, request_id):
-    """Show individual step status and details"""
-
-    status = step_info.get('status', 'pending')
-    message = step_info.get('message', '')
-    started_at = step_info.get('started_at', '')
-    completed_at = step_info.get('completed_at', '')
-
-    # Status styling
-    status_class = f"status-{status}"
-    status_emoji = {
-        'completed': '✅',
-        'processing': '🔄',
-        'failed': '❌',
-        'pending': '⏳'
-    }.get(status, '❓')
-
-    # Step header
-    st.markdown(f"### {status_emoji} {step_name.title()}")
-
-    # Status information
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown(
-            f"**Status:** <span class='{status_class}'>{status.title()}</span>", unsafe_allow_html=True)
-        if message:
-            st.markdown(f"**Message:** {message}")
-
-    with col2:
-        if started_at:
-            st.markdown(f"**Started:** {started_at}")
-        if completed_at:
-            st.markdown(f"**Completed:** {completed_at}")
-
-    # Show step-specific content
-    if status == 'completed':
-        # Show step results if available
-        if 'analysis_results' in st.session_state and st.session_state.analysis_results:
-            results = st.session_state.analysis_results
-            show_step_results(step_name, results)
-
-    elif status == 'processing':
-        # Show processing animation
-        with st.spinner(f"Processing {step_name}..."):
-            st.info(f"🔄 {step_name.title()} is currently being processed...")
-
-    elif status == 'failed':
-        # Show error information
-        st.error(f"❌ {step_name.title()} failed")
-        if message:
-            st.error(f"Error: {message}")
-
-    else:  # pending
-        st.info(f"⏳ {step_name.title()} is waiting to start...")
-
-
-def show_step_results(step_name, results):
-    """Show results for a specific step"""
-
-    if step_name == 'chunking' and 'chunks' in results:
-        st.markdown("#### 📝 Generated Chunks")
-        for i, chunk in enumerate(results['chunks'][:10]):  # Show first 10
-            with st.expander(f"Chunk {i+1}"):
-                st.write(f"**Content:** {chunk.get('content', '')[:200]}...")
-                if 'metadata' in chunk:
-                    st.json(chunk['metadata'])
-
-    elif step_name == 'inferring' and 'inferences' in results:
-        st.markdown("#### 🔍 Generated Inferences")
-        # Show first 10
-        for i, inference in enumerate(results['inferences'][:10]):
-            with st.expander(f"Inference {i+1}"):
-                st.write(f"**Meaning:** {inference.get('meaning', '')}")
-                st.write(f"**Chunk ID:** {inference.get('chunk_id', '')}")
-                if 'confidence' in inference:
-                    st.write(
-                        f"**Confidence:** {inference.get('confidence', '')}")
-
-    elif step_name == 'relating' and 'patterns' in results:
-        st.markdown("#### 🔗 Identified Patterns")
-        for i, pattern in enumerate(results['patterns'][:10]):  # Show first 10
-            with st.expander(f"Pattern {i+1}"):
-                st.write(f"**Pattern:** {pattern.get('pattern', '')}")
-                st.write(f"**Description:** {pattern.get('description', '')}")
-                if 'frequency' in pattern:
-                    st.write(f"**Frequency:** {pattern.get('frequency', '')}")
-
-    elif step_name == 'explaining' and 'insights' in results:
-        st.markdown("#### 💡 Generated Insights")
-        for i, insight in enumerate(results['insights'][:10]):  # Show first 10
-            with st.expander(f"Insight {i+1}"):
-                st.write(f"**Insight:** {insight.get('insight', '')}")
-                st.write(
-                    f"**Impact Score:** {insight.get('impact_score', '')}")
-                if 'evidence' in insight:
-                    st.write(f"**Evidence:** {insight.get('evidence', '')}")
-
-    elif step_name == 'activating' and 'design_principles' in results:
-        st.markdown("#### 🎯 Design Principles")
-        # Show first 10
-        for i, principle in enumerate(results['design_principles'][:10]):
-            with st.expander(f"Principle {i+1}"):
-                st.write(f"**Principle:** {principle.get('principle', '')}")
-                st.write(
-                    f"**Action Verbs:** {', '.join(principle.get('action_verbs', []))}")
-                st.write(
-                    f"**Design Direction:** {principle.get('design_direction', '')}")
-                if 'priority' in principle:
-                    st.write(f"**Priority:** {principle.get('priority', '')}")
-
-
-def display_final_results(results, tabs):
-    """Display final results in the appropriate tabs"""
-
-    # Update each tab with final results
-    for i, step_name in enumerate(ANALYSIS_STEPS):
-        with tabs[i]:
-            show_step_results(step_name, results)
 
 
 def show_analysis_history():
