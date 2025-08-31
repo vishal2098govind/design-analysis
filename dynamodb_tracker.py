@@ -346,7 +346,7 @@ class DynamoDBTracker:
             timestamp = datetime.now(timezone.utc).isoformat()
 
             # Update only the result_data field
-            update_expression = "#analysis_result.#result_data = :result_data, #updated_at = :timestamp"
+            update_expression = "SET #analysis_result.#result_data = :result_data, #updated_at = :timestamp"
 
             expression_attribute_names = {
                 '#analysis_result': 'analysis_result',
