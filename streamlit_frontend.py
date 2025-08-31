@@ -454,27 +454,19 @@ def monitor_analysis_progress(request_id):
 
             # Check if analysis is complete
             if overall_status == 'completed':
-                with completion_message.container():
-                    st.success("🎉 Analysis completed successfully!")
-
-                    # Load and display final results with tabbed view
-                    result_data = analysis.get(
-                        'analysis_result', {}).get('result_data', '')
-                    if result_data:
-                        st.markdown("### 📄 Final Analysis Results")
-                        with st.spinner("Loading final results from S3..."):
-                            results = load_analysis_results(request_id)
-                            if results:
-                                st.session_state.analysis_results = results
-                                display_analysis_results(results)
-                            else:
-                                st.error("❌ Failed to load results from S3")
+                st.markdown("### 📄 Final Analysis Results")
+                with st.spinner("Loading final results from S3..."):
+                    results = load_analysis_results(request_id)
+                    if results:
+                        st.session_state.analysis_results = results
+                        display_analysis_results(results)
+                    else:
+                        st.error("❌ Failed to load results from S3")
 
                     # Exit the monitoring loop
-                break
+                return
             elif overall_status == 'failed':
-                with completion_message.container():
-                    st.error("❌ Analysis failed")
+                st.error("❌ Analysis failed")
                 return
 
             time.sleep(2)  # Check every 2 seconds
