@@ -130,18 +130,12 @@ def main():
 
 def show_new_analysis():
     """Show the new analysis form with real-time step monitoring"""
-
-    st.markdown('<h2 class="sub-header">🚀 New Analysis</h2>',
-                unsafe_allow_html=True)
     implementation = "hybrid"
     include_metadata = True
-
-    # Research data input
-    st.markdown("### Research Data")
-
     input_method = st.radio(
         "Choose input method:",
-        ["📁 File Upload", "🔗 S3 Path"]
+        ["📁 File Upload", "🔗 S3 Path"],
+        horizontal=True
     )
 
     research_data = None
@@ -200,7 +194,7 @@ def show_new_analysis():
     elif input_method == "🔗 S3 Path":
         s3_file_path = st.text_input(
             "S3 File Path:",
-            placeholder="s3://bucket-name/path/to/research-data.json",
+            placeholder="/path/to/research-data.json",
             help="Enter the S3 path to your research data file"
         )
 
