@@ -819,7 +819,11 @@ def check_s3_connection():
     """Check if S3 is accessible"""
     try:
         from s3_storage import create_s3_storage
-        storage = create_s3_storage()
+        storage = create_s3_storage(
+            bucket_name=S3_BUCKET_NAME,
+            region=S3_REGION,
+            prefix=S3_PREFIX
+        )
         storage.get_bucket_info()
         return True
     except:
