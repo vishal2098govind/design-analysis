@@ -665,7 +665,7 @@ def get_analysis_history(status_filter="All", date_filter=None, search_term=None
     try:
         from dynamodb_tracker import create_dynamodb_tracker
         tracker = create_dynamodb_tracker()
-        date_str = date_filter.strftime('%Y-%m-%d') if date_filter else None
+        date_str = date_filter.strftime('%Y-%m') if date_filter else None
         analyses = tracker.list_analysis_requests(
             limit=1000, date_filter=date_str)
 
