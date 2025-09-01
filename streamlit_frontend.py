@@ -44,7 +44,7 @@ def main():
     """Main Streamlit application"""
 
     st.set_page_config(
-        page_title="Design Analysis System",
+        page_title="Agentic Analysis Synthesis",
         page_icon="🔍",
         layout="wide",
         initial_sidebar_state="expanded"
@@ -108,7 +108,7 @@ def main():
     """, unsafe_allow_html=True)
 
     # Header
-    st.markdown('<h1 class="main-header">🔍 Design Analysis System</h1>',
+    st.markdown('<h1 class="main-header">🔍 Agentic Analysis Synthesis</h1>',
                 unsafe_allow_html=True)
     st.markdown(
         "Transform research data into actionable design principles using AI-powered analysis")
