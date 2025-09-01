@@ -448,7 +448,7 @@ class DynamoDBTracker:
                 ProjectionExpression="request_id, research_data, created_at, updated_at, overall_status",
                 FilterExpression="created_at >= :date_filter" if date_filter is not None else None,
                 ExpressionAttributeValues={
-                    ':date_filter': {'S': f'{date_filter}-01T00:00:00+00:00'} if date_filter is not None else None
+                    ':date_filter': {'S': f'{date_filter}T00:00:00+00:00'} if date_filter is not None else None
                 }
             )
 

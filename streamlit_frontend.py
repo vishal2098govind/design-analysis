@@ -665,7 +665,7 @@ def get_analysis_history(status_filter="All", date_filter=None, search_term=None
     try:
         from dynamodb_tracker import create_dynamodb_tracker
         tracker = create_dynamodb_tracker()
-        date_str = date_filter.strftime('%Y-%m') if date_filter else None
+        date_str = date_filter.strftime('%Y-%m-%d') if date_filter else None
         analyses = tracker.list_analysis_requests(
             limit=1000, date_filter=date_str)
 
@@ -673,18 +673,6 @@ def get_analysis_history(status_filter="All", date_filter=None, search_term=None
         if status_filter != "All":
             analyses = [a for a in analyses if a.get(
                 'overall_status') == status_filter]
-
-        if date_filter:
-            date_str = date_filter.strftime('%Y-%m-%d')
-            # Filter by date more robustly - handle both old and new timestamp formats
-            filtered_analyses = []
-            for analysis in analyses:
-                created_at = analysis.get('created_at', '')
-                if created_at:
-                    # Handle both formats: "2025-08-31T..." and "2025-08-31T...+00:00"
-                    if created_at.startswith(date_str):
-                        filtered_analyses.append(analysis)
-            analyses = filtered_analyses
 
         if search_term:
             analyses = [a for a in analyses if search_term.lower()
