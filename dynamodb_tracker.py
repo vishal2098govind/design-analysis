@@ -437,7 +437,7 @@ class DynamoDBTracker:
             logger.error(f"❌ Failed to get analysis status: {e}")
             return None
 
-    def list_analysis_requests(self, limit: int = 50) -> list:
+    def list_analysis_requests(self, limit: int = 50, date_filter: Optional[str] = None) -> list:
         """List recent analysis requests"""
         try:
             logger.info(f"📋 Listing analysis requests (limit: {limit})")
@@ -445,7 +445,11 @@ class DynamoDBTracker:
             response = self.dynamodb.scan(
                 TableName=self.table_name,
                 Limit=limit,
-                ProjectionExpression="request_id, research_data, created_at, updated_at, overall_status"
+                ProjectionExpression="request_id, research_data, created_at, updated_at, overall_status",
+                FilterExpression="created_at >= :date_filter" if date_filter is not None else None,
+                ExpressionAttributeValues={
+                    ':date_filter': {'S': f'{date_filter}T00:00:00+00:00'} if date_filter is not None else None
+                }
             )
 
             items = []
