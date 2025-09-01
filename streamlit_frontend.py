@@ -383,11 +383,11 @@ def show_analysis_history():
         df['created_at'] = df['created_at'].apply(parse_timestamp)
         df['updated_at'] = df['updated_at'].apply(parse_timestamp)
 
-        display_df = df[['request_id', 'overall_status',
-                         'created_at', 'updated_at']].copy()
-        display_df.columns = ['Request ID', 'Status', 'Created', 'Updated']
+        # display_df = df[['request_id', 'overall_status',
+        #                  'created_at', 'updated_at']].copy()
+        # display_df.columns = ['Request ID', 'Status', 'Created', 'Updated']
 
-        st.dataframe(display_df, use_container_width=True)
+        # st.dataframe(display_df, use_container_width=True)
 
         # Create user-friendly dropdown options with formatted timestamps
         def format_dropdown_option(row):
@@ -445,7 +445,7 @@ def show_analysis_history():
 
         if selected_id:
             # Show the full request ID for reference
-            st.info(f"📋 Full Request ID: `{selected_id}`")
+            # st.info(f"📋 Full Request ID: `{selected_id}`")
             if date_filter:
                 year_month = date_filter.strftime('%Y/%m')
             else:
