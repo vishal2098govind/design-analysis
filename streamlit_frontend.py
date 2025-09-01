@@ -212,7 +212,7 @@ def show_new_analysis():
     # Get the actual S3 path for analysis
     analysis_s3_path = s3_file_path or st.session_state.get('uploaded_s3_path')
 
-    if st.button("🚀 Start Analysis", type="primary", disabled=not (has_research_data or has_s3_file) and not st.session_state['analysis_started']):
+    if st.button("🚀 Start Analysis", type="primary", disabled=not (has_research_data or has_s3_file) or st.session_state['analysis_started']):
         if has_research_data or has_s3_file:
             with st.spinner("Starting analysis..."):
                 result = submit_analysis(
@@ -454,6 +454,10 @@ def show_analysis_history():
 def show_analysis_details(request_id):
     """Show detailed analysis results"""
 
+    # Create placeholder for progress bar
+    progress_bar = st.progress(0)
+    overall_status_text = st.empty()
+
     st.markdown(
         f'<h3 class="sub-header">📊 Analysis Details: {request_id}</h3>', unsafe_allow_html=True)
 
@@ -464,110 +468,33 @@ def show_analysis_details(request_id):
         st.error(f"❌ Analysis {request_id} not found")
         return
 
-    # Basic info in compact grid layout
-    col1, col2, col3 = st.columns(3)
+    overall_status = analysis.get('overall_status', 'pending')
+    steps_status = analysis.get(
+        'analysis_result', {}).get('steps_status', {})
 
-    with col1:
-        st.metric("Status", analysis.get('overall_status', 'unknown'))
+    # Calculate overall progress
+    completed_steps = sum(1 for step in ANALYSIS_STEPS
+                          if steps_status.get(step, {}).get('status') == 'completed')
+    progress = (completed_steps / len(ANALYSIS_STEPS)) * 100
 
-    with col2:
-        created_at = analysis.get('created_at', 'unknown')
-        if created_at != 'unknown':
-            try:
-                parsed_date = pd.to_datetime(created_at, errors='coerce')
-                if not pd.isna(parsed_date):
-                    formatted_date = parsed_date.strftime('%Y-%m-%d %H:%M:%S')
-                    st.metric("Created", formatted_date)
-                else:
-                    st.metric("Created", created_at)
-            except:
-                st.metric("Created", created_at)
-        else:
-            st.metric("Created", created_at)
+    # Update progress bar
+    progress_bar.progress(int(progress))
 
-    with col3:
-        updated_at = analysis.get('updated_at', 'unknown')
-        if updated_at != 'unknown':
-            try:
-                parsed_date = pd.to_datetime(updated_at, errors='coerce')
-                if not pd.isna(parsed_date):
-                    formatted_date = parsed_date.strftime('%Y-%m-%d %H:%M:%S')
-                    st.metric("Updated", formatted_date)
-                else:
-                    st.metric("Updated", updated_at)
-            except:
-                st.metric("Updated", updated_at)
-        else:
-            st.metric("Updated", updated_at)
+    status_emoji = {
+        'completed': '✅',
+        'processing': '🔄',
+        'failed': '❌',
+        'pending': '⏳'
+    }.get(overall_status, '❓')
 
-    # Research data section in its own row
-    research_data = analysis.get('research_data', '')
-    if research_data:
-        st.metric("📁 Research Data", "Available")
-        st.caption(f"S3: {research_data[:30]}...")
-    else:
-        st.metric("📁 Research Data", "Not set")
-
-    # Step status
-    st.markdown("### 🔄 Analysis Steps")
-
-    steps_status = analysis.get('analysis_result', {}).get('steps_status', {})
-
-    for step_name in ANALYSIS_STEPS:
-        step_info = steps_status.get(step_name, {})
-        status = step_info.get('status', 'unknown')
-        message = step_info.get('message', '')
-        started_at = step_info.get('started_at', '')
-        completed_at = step_info.get('completed_at', '')
-
-        col1, col2, col3 = st.columns([1, 2, 2])
-
-        with col1:
-            status_emoji = {
-                'completed': '✅',
-                'processing': '🔄',
-                'failed': '❌',
-                'pending': '⏳'
-            }.get(status, '❓')
-            st.write(f"{status_emoji} {step_name.title()}")
-
-        with col2:
-            st.write(f"**Status:** {status}")
-            st.write(f"**Message:** {message}")
-
-        with col3:
-            if started_at:
-                try:
-                    parsed_started = pd.to_datetime(
-                        started_at, errors='coerce')
-                    if not pd.isna(parsed_started):
-                        formatted_started = parsed_started.strftime('%H:%M:%S')
-                        st.write(f"**Started:** {formatted_started}")
-                    else:
-                        st.write(f"**Started:** {started_at}")
-                except:
-                    st.write(f"**Started:** {started_at}")
-            if completed_at:
-                try:
-                    parsed_completed = pd.to_datetime(
-                        completed_at, errors='coerce')
-                    if not pd.isna(parsed_completed):
-                        formatted_completed = parsed_completed.strftime(
-                            '%H:%M:%S')
-                        st.write(f"**Completed:** {formatted_completed}")
-                    else:
-                        st.write(f"**Completed:** {completed_at}")
-                except:
-                    st.write(f"**Completed:** {completed_at}")
-
-        st.divider()
+    overall_status_text.markdown(
+        f"**Overall Status:** {status_emoji} {overall_status.title()} "
+        f"({completed_steps}/{len(ANALYSIS_STEPS)} steps completed)"
+    )
 
     # Results
     result_data = analysis.get('analysis_result', {}).get('result_data', '')
     if result_data:
-        st.markdown("### 📄 Analysis Results")
-        st.text(f"S3 Path: {result_data}")
-
         # Try to load and display results
         if st.button("📥 Load Results"):
             with st.spinner("Loading results from S3..."):
