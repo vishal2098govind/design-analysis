@@ -413,7 +413,7 @@ def show_analysis_history():
                 'pending': '⏳'
             }.get(status, '❓')
 
-            return f"{status_emoji} {formatted_time} - {request_id[:12]}..."
+            return f"{status_emoji} {formatted_time} - {request_id}"
 
         # Create dropdown options
         dropdown_options = []
@@ -446,12 +446,16 @@ def show_analysis_history():
         if selected_id:
             # Show the full request ID for reference
             st.info(f"📋 Full Request ID: `{selected_id}`")
-            show_analysis_details(selected_id)
+            if date_filter:
+                year_month = date_filter.strftime('%Y/%m')
+            else:
+                year_month = None
+            show_analysis_details(selected_id, year_month)
     else:
         st.info("No analyses found matching the criteria.")
 
 
-def show_analysis_details(request_id):
+def show_analysis_details(request_id, year_month=None):
     """Show detailed analysis results"""
 
     # Create placeholder for progress bar
@@ -498,7 +502,7 @@ def show_analysis_details(request_id):
         # Try to load and display results
         if st.button("📥 Load Results"):
             with st.spinner("Loading results from S3..."):
-                results = load_analysis_results(request_id)
+                results = load_analysis_results(request_id, year_month)
                 if results:
                     display_analysis_results(results)
                 else:
@@ -751,7 +755,7 @@ def submit_analysis(research_data, s3_file_path, implementation, include_metadat
         return None
 
 
-def load_analysis_results(request_id):
+def load_analysis_results(request_id, year_month=None):
     """Load analysis results from S3"""
     try:
         from s3_storage import create_s3_storage
@@ -760,7 +764,7 @@ def load_analysis_results(request_id):
             region=S3_REGION,
             prefix=S3_PREFIX
         )
-        results = storage.load_analysis(request_id)
+        results = storage.load_analysis(request_id, year_month)
         return results
     except Exception as e:
         st.error(f"Error loading results: {e}")

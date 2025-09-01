@@ -219,10 +219,10 @@ class S3Storage:
         except Exception as e:
             logger.warning(f"Failed to configure bucket settings: {e}")
 
-    def _get_object_key(self, request_id: str, file_type: str = "analysis") -> str:
+    def _get_object_key(self, request_id: str, file_type: str = "analysis", year_month: Optional[str] = None) -> str:
         """Generate S3 object key with organized folder structure"""
         timestamp = datetime.now()
-        year_month = timestamp.strftime("%Y/%m")
+        year_month = year_month or timestamp.strftime("%Y/%m")
 
         return f"{self.prefix}/{file_type}/{year_month}/{request_id}.json"
 
@@ -275,7 +275,7 @@ class S3Storage:
             logger.error(f"Failed to save analysis {request_id}: {e}")
             return False
 
-    def load_analysis(self, request_id: str) -> Optional[dict]:
+    def load_analysis(self, request_id: str, year_month: Optional[str] = None) -> Optional[dict]:
         """
         Load analysis result from S3
 
@@ -288,7 +288,7 @@ class S3Storage:
         try:
             # Try to find the object by searching common paths
             possible_keys = [
-                self._get_object_key(request_id, "analysis"),
+                self._get_object_key(request_id, "analysis", year_month),
                 f"{self.prefix}/analysis/{request_id}.json",
                 f"{self.prefix}/{request_id}.json"
             ]
