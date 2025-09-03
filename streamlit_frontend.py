@@ -1100,32 +1100,13 @@ def load_research_data_preview(file_path: str, max_chars: int = 10000) -> str:
 
     try:
         # Handle different file path formats
-        if file_path.startswith('s3://'):
-            # Handle S3 paths
-            try:
-                from s3_storage import create_s3_storage
-                storage = create_s3_storage()
-                file_content = storage.load_research_data(file_path)
-            except Exception as e:
-                print(f"Error loading from S3: {e}")
-                return None
-        else:
-            # Handle local file paths (for development/testing)
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    file_content = f.read()
-            except FileNotFoundError:
-                # Try to load from S3 storage as fallback
-                try:
-                    from s3_storage import create_s3_storage
-                    storage = create_s3_storage()
-                    file_content = storage.load_research_data(file_path)
-                except Exception as e:
-                    print(f"Error loading from S3 fallback: {e}")
-                    return None
-            except Exception as e:
-                print(f"Error reading local file: {e}")
-                return None
+        try:
+            from s3_storage import create_s3_storage
+            storage = create_s3_storage()
+            file_content = storage.load_research_data(file_path)
+        except Exception as e:
+            print(f"Error loading from S3: {e}")
+            return None
 
         # Return preview (limit size for performance)
         if len(file_content) > max_chars:
