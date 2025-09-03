@@ -568,7 +568,7 @@ class S3Storage:
         Returns:
             str: File content or None if not found
         """
-        key = f"{self.prefix}/{s3_path}"
+        key = f"{s3_path}"
         logger.info(f"☁️ S3: Starting to load research file: {key}")
         logger.info(f"📦 S3: Target bucket: {self.bucket_name}")
 
