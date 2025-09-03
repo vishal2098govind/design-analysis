@@ -1101,7 +1101,11 @@ def load_research_data_preview(file_path: str, max_chars: int = 10000) -> str:
     try:
         # Handle different file path formats
         from s3_storage import create_s3_storage
-        storage = create_s3_storage()
+        storage = create_s3_storage(
+            bucket_name=S3_BUCKET_NAME,
+            region=S3_REGION,
+            prefix=S3_PREFIX
+        )
 
         file_content = storage.load_research_file(file_path)
 
