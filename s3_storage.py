@@ -579,7 +579,7 @@ class S3Storage:
             logger.info(f"🔍 S3: Attempting to get object from S3...")
             response = self.s3_client.get_object(
                 Bucket=self.bucket_name,
-                Key=s3_path
+                Key=f"{self.prefix}/{s3_path}"
             )
             logger.info(f"✅ S3: Successfully retrieved object from S3")
 
