@@ -496,6 +496,37 @@ def show_analysis_details(request_id, year_month=None):
         f"({completed_steps}/{len(ANALYSIS_STEPS)} steps completed)"
     )
 
+    # Research Data Preview
+    research_data_path = analysis.get('research_data', '')
+    if research_data_path:
+        st.markdown("### 📖 Research Data Preview")
+
+        # Show research data path
+        st.info(f"📁 Research Data: {research_data_path}")
+
+        # Add preview button
+        if st.button("👁️ Preview Research Data"):
+            with st.spinner("Loading research data preview..."):
+                preview_data = load_research_data_preview(research_data_path)
+
+                if preview_data:
+                    # Show file info
+                    st.text_area(
+                        "Full Content:",
+                        value=preview_data,
+                        height=500,
+                        disabled=True
+                    )
+                else:
+                    st.error("❌ Failed to load research data preview")
+                    st.info(
+                        "💡 The research data file might not be accessible or the path is incorrect")
+        else:
+            st.info(
+                "💡 Click 'Preview Research Data' to see the content of your research data file")
+    else:
+        st.info("📝 No research data path available for this analysis")
+
     # Results
     result_data = analysis.get('analysis_result', {}).get('result_data', '')
     if result_data:
@@ -1062,6 +1093,48 @@ def display_analysis_results(results=None, steps_status=None, is_realtime=False)
                             f"**Feasibility:** {principle.get('feasibility', '')}")
             else:
                 st.info("No design principles available")
+
+
+def load_research_data_preview(file_path: str, max_chars: int = 10000) -> str:
+    """Load a preview of research data from file path"""
+
+    try:
+        # Handle different file path formats
+        if file_path.startswith('s3://'):
+            # Handle S3 paths
+            try:
+                from s3_storage import create_s3_storage
+                storage = create_s3_storage()
+                file_content = storage.load_research_data(file_path)
+            except Exception as e:
+                print(f"Error loading from S3: {e}")
+                return None
+        else:
+            # Handle local file paths (for development/testing)
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    file_content = f.read()
+            except FileNotFoundError:
+                # Try to load from S3 storage as fallback
+                try:
+                    from s3_storage import create_s3_storage
+                    storage = create_s3_storage()
+                    file_content = storage.load_research_data(file_path)
+                except Exception as e:
+                    print(f"Error loading from S3 fallback: {e}")
+                    return None
+            except Exception as e:
+                print(f"Error reading local file: {e}")
+                return None
+
+        # Return preview (limit size for performance)
+        if len(file_content) > max_chars:
+            return file_content[:max_chars]
+        return file_content
+
+    except Exception as e:
+        print(f"Error loading research data preview: {e}")
+        return None
 
 
 if __name__ == "__main__":
