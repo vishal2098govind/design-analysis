@@ -1100,12 +1100,13 @@ def load_research_data_preview(file_path: str, max_chars: int = 10000) -> str:
 
     try:
         # Handle different file path formats
-        try:
-            from s3_storage import create_s3_storage
-            storage = create_s3_storage()
-            file_content = storage.load_research_data(file_path)
-        except Exception as e:
-            print(f"Error loading from S3: {e}")
+        from s3_storage import create_s3_storage
+        storage = create_s3_storage()
+
+        file_content = storage.load_research_file(file_path)
+
+        if file_content is None:
+            print(f"Failed to load research file: {file_path}")
             return None
 
         # Return preview (limit size for performance)
