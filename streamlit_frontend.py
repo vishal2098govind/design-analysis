@@ -799,9 +799,6 @@ def load_analysis_results(request_id, year_month=None):
 
 def display_analysis_results(results=None, steps_status=None, is_realtime=False):
     """Display analysis results in a formatted way - works for both real-time and final results"""
-
-    st.markdown("### 📊 Analysis Results")
-
     # Create tabs for different result types
     result_tabs = st.tabs(["📝 Chunks", "🔍 Inferences",
                           "🔗 Patterns", "💡 Insights", "🎯 Design Principles"])
