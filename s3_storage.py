@@ -563,19 +563,20 @@ class S3Storage:
         Load research file from S3
 
         Args:
-            s3_path: S3 object key for the file
+            s3_path: S3 object key for the file, relative to the prefix
 
         Returns:
             str: File content or None if not found
         """
-        logger.info(f"☁️ S3: Starting to load research file: {s3_path}")
+        key = f"{self.prefix}/{s3_path}"
+        logger.info(f"☁️ S3: Starting to load research file: {key}")
         logger.info(f"📦 S3: Target bucket: {self.bucket_name}")
 
         try:
             logger.info(f"🔍 S3: Attempting to get object from S3...")
             response = self.s3_client.get_object(
                 Bucket=self.bucket_name,
-                Key=f"{self.prefix}/{s3_path}"
+                Key=key
             )
             logger.info(f"✅ S3: Successfully retrieved object from S3")
 
