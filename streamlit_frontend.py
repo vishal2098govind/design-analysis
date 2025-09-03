@@ -496,48 +496,53 @@ def show_analysis_details(request_id, year_month=None):
         f"({completed_steps}/{len(ANALYSIS_STEPS)} steps completed)"
     )
 
-    # Research Data Preview
+    # Create comprehensive tabbed interface
+    st.markdown("### 📊 Analysis Details")
+
+    # Create tabs for different sections
+    detail_tabs = st.tabs(["📖 Research Data", "📝 Analysis Results"])
+
     research_data_path = analysis.get('research_data', '')
     if research_data_path:
-        st.markdown("### 📖 Research Data Preview")
-
-        # Show research data path
-        st.info(f"📁 Research Data: {research_data_path}")
-
-        # Add preview button
-        if st.button("👁️ Preview Research Data"):
-            with st.spinner("Loading research data preview..."):
-                preview_data = load_research_data_preview(research_data_path)
-
-                if preview_data:
-                    # Show file info
-                    st.text_area(
-                        "Full Content:",
-                        value=preview_data,
-                        height=500,
-                        disabled=True
-                    )
-                else:
-                    st.error("❌ Failed to load research data preview")
-                    st.info(
-                        "💡 The research data file might not be accessible or the path is incorrect")
-        else:
-            st.info(
-                "💡 Click 'Preview Research Data' to see the content of your research data file")
+        try:
+            preview_data = load_research_data_preview(research_data_path)
+        except Exception as e:
+            print(f"❌ Error loading research data preview: {str(e)}")
+            preview_data = None
     else:
-        st.info("📝 No research data path available for this analysis")
+        preview_data = None
 
-    # Results
-    result_data = analysis.get('analysis_result', {}).get('result_data', '')
-    if result_data:
-        # Try to load and display results
-        if st.button("📥 Load Results"):
-            with st.spinner("Loading results from S3..."):
-                results = load_analysis_results(request_id, year_month)
-                if results:
-                    display_analysis_results(results)
-                else:
-                    st.error("❌ Failed to load results from S3")
+    # Research Data Tab
+    with detail_tabs[0]:
+        # Show file info if available
+        if preview_data:
+            st.text_area(
+                "Content:",
+                value=preview_data,
+                height=500,
+                disabled=True
+            )
+        else:
+            st.error("❌ Failed to load research data preview")
+
+    # Analysis Results Tab
+    with detail_tabs[1]:
+        result_data = analysis.get(
+            'analysis_result', {}).get('result_data', '')
+        if result_data:
+            st.markdown("#### 📊 Analysis Results")
+            st.info(f"**Results S3 Path:** {result_data}")
+
+            # Try to load and display results
+            if st.button("📥 Load Results", key="load_results_btn"):
+                with st.spinner("Loading results from S3..."):
+                    results = load_analysis_results(request_id, year_month)
+                    if results:
+                        display_analysis_results(results)
+                    else:
+                        st.error("❌ Failed to load results from S3")
+        else:
+            st.info("📊 No analysis results available yet")
 
 
 def show_settings():
