@@ -44,8 +44,8 @@ class S3Storage:
 
     def __init__(
         self,
-        bucket_name: Optional[str] = None,
-        region: Optional[str] = None,
+        bucket_name: str,
+        region: str,
         prefix: str = "design-analysis",
         enable_versioning: bool = True,
         enable_lifecycle: bool = True
@@ -54,7 +54,7 @@ class S3Storage:
         Initialize S3 storage
 
         Args:
-            bucket_name: S3 bucket name (auto-generated if not provided)
+            bucket_name: S3 bucket name
             region: AWS region (defaults to environment or us-east-1)
             prefix: Folder prefix for organizing data
             enable_versioning: Enable S3 versioning for data protection
@@ -66,11 +66,7 @@ class S3Storage:
         self.enable_lifecycle = enable_lifecycle
 
         # Auto-generate bucket name if not provided
-        if bucket_name:
-            self.bucket_name = bucket_name
-        else:
-            import uuid
-            self.bucket_name = f"design-analysis-{uuid.uuid4().hex[:8]}"
+        self.bucket_name = bucket_name
 
         # Initialize S3 client
         self._init_s3_client()
@@ -785,15 +781,15 @@ class S3Storage:
 
 # Factory function for easy initialization
 def create_s3_storage(
-    bucket_name: Optional[str] = None,
-    region: Optional[str] = None,
+    bucket_name: str,
+    region: str,
     prefix: str = "design-analysis"
 ) -> S3Storage:
     """
     Factory function to create S3 storage instance
 
     Args:
-        bucket_name: S3 bucket name (auto-generated if not provided)
+        bucket_name: S3 bucket name
         region: AWS region
         prefix: Folder prefix for organizing data
 
