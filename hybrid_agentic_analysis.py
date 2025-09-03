@@ -313,10 +313,38 @@ Return a JSON array of chunks."""
         chunks = parsed_chunks if isinstance(
             parsed_chunks, list) else [parsed_chunks]
 
-        # Ensure each chunk has an ID
+        logger.info(
+            f"chunking response: {response.choices[0].message.content}")
+        logger.info(f"Parsed chunks: {parsed_chunks}")
+        logger.info(f"Chunks: {chunks}")
+
+        # Ensure each chunk has an ID and is in the correct format
+        processed_chunks = []
         for chunk in chunks:
-            if not hasattr(chunk, 'id') or not chunk.id:
-                chunk.id = f"chunk_{uuid.uuid4().hex[:8]}"
+            # Handle both object and dict formats
+            if hasattr(chunk, 'id'):
+                # Object format
+                chunk_dict = {
+                    "id": chunk.id if chunk.id else f"chunk_{uuid.uuid4().hex[:8]}",
+                    "content": chunk.content,
+                    "source": chunk.source,
+                    "type": chunk.type,
+                    "confidence": chunk.confidence,
+                    "tags": chunk.tags
+                }
+            else:
+                # Dict format
+                chunk_dict = {
+                    "id": chunk.get('id', f"chunk_{uuid.uuid4().hex[:8]}"),
+                    "content": chunk.get('content', str(chunk)),
+                    "source": chunk.get('source', 'research_data'),
+                    "type": chunk.get('type', 'observation'),
+                    "confidence": chunk.get('confidence', 0.85),
+                    "tags": chunk.get('tags', ['general'])
+                }
+            processed_chunks.append(chunk_dict)
+
+        chunks = processed_chunks
 
         # Update DynamoDB status to completed
         if tracker and request_id:
